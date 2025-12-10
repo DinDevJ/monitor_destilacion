@@ -41,155 +41,188 @@ class PantallaPrincipal extends StatefulWidget {
 }
 
 class _PantallaPrincipalState extends State<PantallaPrincipal> {
-  // Bluetooth y Estado
+  // Bluetooth
   List<BluetoothDevice> _devices = [];
   BluetoothDevice? _dispositivoSeleccionado;
   bool _conectando = false;
 
-  // --- DATOS PROCESADOS ---
+  // --- HISTORIALES GRÁFICOS ---
   List<List<FlSpot>> _historialTemps = List.generate(7, (_) => []);
-  List<FlSpot> _historialPresionAtm = [];
-  List<FlSpot> _historialHumedad = [];
-  List<FlSpot> _historialTempAmb = [];
-  List<FlSpot> _historialPotencia = [];
+  List<FlSpot> _historialPresionAtm = []; // Dato j
+  List<FlSpot> _historialHumedad = [];    // Dato h
+  List<FlSpot> _historialTempAmb = [];    // Dato i
+  List<FlSpot> _historialPotencia = [];   // Dato x
 
-  List<String> _ultimoMensaje = [];
+  // --- MEMORIA PERSISTENTE (Aquí guardamos los 24 datos) ---
+  // Inicializamos con "0.0" para que no haya nulls al principio
+  List<String> _datosPersistentes = List.filled(24, "0.00");
+
+  // Base de datos Excel
   List<List<String>> _baseDeDatosLocal = [];
 
   double _tiempo = 0;
   Timer? _timerDemo;
-
   String _buffer = "";
+
+  // --- MAPA DE ETIQUETAS (Tu diccionario a-x) ---
+  final Map<String, int> _mapaLetras = {
+    'a': 0, 'b': 1, 'c': 2, 'd': 3, 'e': 4, 'f': 5, 'g': 6, // Temps
+    'h': 7, // Humedad
+    'i': 8, // Temp Amb
+    'j': 9, // Presion Atm
+    'k': 10, 'l': 11, 'm': 12, 'n': 13, 'o': 14, 'p': 15, 'q': 16, // Presiones Sistema
+    'r': 17, 's': 18, 't': 19, 'u': 20, // Fallas
+    'v': 21, // Corriente
+    'w': 22, // Voltaje
+    'x': 23  // Potencia
+  };
 
   @override
   void initState() {
     super.initState();
     _pedirPermisos();
 
+    // ESCUCHAR BLUETOOTH
     MonitorService().dataStream.listen((dynamic data) {
       try {
         String mensajeParcial = "";
 
-        if (data is List<String>) {
-          mensajeParcial = data.join("a");
-          if (!mensajeParcial.endsWith("a")) mensajeParcial += "a";
-        } else if (data is List<int>) {
+        // 1. Estandarizar entrada a Texto
+        if (data is List<int>) {
           mensajeParcial = String.fromCharCodes(data);
         } else if (data is String) {
           mensajeParcial = data;
         } else if (data is List) {
-          mensajeParcial = data.join("a") + "a";
+          // Si llega lista mezclada, unimos todo
+          mensajeParcial = data.join("");
         }
 
+        // 2. Acumular en Buffer
         _buffer += mensajeParcial;
 
-        while(_buffer.contains("aa")) {
-          _buffer = _buffer.replaceAll("aa", "a");
+        // 3. PROCESAR SI HAY DATOS ÚTILES
+        // Si el buffer contiene al menos una letra válida, intentamos procesar
+        if (_buffer.contains(RegExp(r'[a-x]'))) {
+          _procesarBufferInteligente();
         }
 
-        if (_buffer.contains('\n')) {
-          List<String> lineas = _buffer.split('\n');
-          for (int i = 0; i < lineas.length - 1; i++) {
-            if (lineas[i].trim().isNotEmpty) {
-              _procesarNuevosDatos(lineas[i]);
-            }
-          }
-          _buffer = lineas.last;
-        } else {
-          if (_buffer.split("a").length >= 25) {
-            _procesarNuevosDatos(_buffer);
-            _buffer = "";
-          }
+        // Limpieza de seguridad: Si el buffer crece demasiado sin procesar, lo recortamos
+        if (_buffer.length > 1000) {
+          _buffer = "";
         }
+
       } catch (e) {
-        print("Error: $e");
+        print("Error recepción: $e");
       }
     });
   }
 
-  void _procesarNuevosDatos(String mensajeCrudo) {
+  // --- ALGORITMO DE EXTRACCIÓN (REGEX) ---
+  void _procesarBufferInteligente() {
     if (!mounted) return;
 
-    String mensajeLimpio = mensajeCrudo.trim();
-    List<String> datos = mensajeLimpio.split("a");
+    // Expresión Regular: Busca una letra (a-x) seguida de un número (entero o decimal)
+    // Ejemplo match: "a20.5", "x1500"
+    RegExp regex = RegExp(r'([a-x])([0-9]+\.?[0-9]*)');
 
-    if (datos.length < 20) return;
+    // Encontramos todas las coincidencias en el buffer
+    Iterable<RegExpMatch> matches = regex.allMatches(_buffer);
 
-    // --- CORRECCIÓN UNIDADES: PASCALES A PSI ---
-    // Recorremos los datos de presión (indices 10 al 16)
-    // Si vemos un número gigante (> 50,000), asumimos Pascales y convertimos a Psi.
-    for(int k=10; k<=16; k++) {
-      if(datos.length > k) {
-        double val = double.tryParse(datos[k]) ?? 0.0;
-        if(val > 50000) {
-          // 1 Psi = 6894.76 Pa. 
-          // Ejemplo: 81065 Pa / 6894.76 = 11.75 Psi
-          double valPsi = val / 6894.76;
-          datos[k] = valPsi.toStringAsFixed(2); // Actualizamos el dato en la lista
+    if (matches.isEmpty) return;
+
+    bool huboCambios = false;
+
+    // Recorremos cada hallazgo
+    for (final match in matches) {
+      String letra = match.group(1)!; // La letra (ej: 'a')
+      String valorStr = match.group(2)!; // El número (ej: '20.5')
+
+      // Buscamos el índice en nuestro mapa (0-23)
+      int? index = _mapaLetras[letra];
+
+      if (index != null) {
+        // --- FILTROS DE INTEGRIDAD Y CONVERSIÓN ---
+        double valor = double.tryParse(valorStr) ?? 0.0;
+
+        // 1. Filtro Presiones (Indices 9 a 16 -> j a q)
+        // Si es Pascales (>50k), convertir a Psi
+        if (index >= 9 && index <= 16) {
+          if (valor > 50000) {
+            valor = valor / 6894.76; // Pa -> Psi
+          }
         }
+
+        // 2. Actualizamos la Memoria Persistente
+        // Solo actualizamos el dato que llegó, los demás se quedan igual (persistencia)
+        _datosPersistentes[index] = valor.toStringAsFixed(2);
+        huboCambios = true;
       }
     }
 
+    // Si encontramos datos válidos, actualizamos la pantalla y limpiamos lo procesado
+    if (huboCambios) {
+      _actualizarGraficasYExcel();
+
+      // Opcional: Limpiar buffer dejando solo el final por si quedó un dato cortado
+      // Estrategia simple: limpiar todo para evitar repeticiones, ya que la memoria persistente guarda el estado
+      _buffer = "";
+
+      // Quitamos el estado de "Cargando..."
+      if (_conectando) {
+        setState(() { _conectando = false; });
+      }
+    }
+  }
+
+  void _actualizarGraficasYExcel() {
+    // Agregar a Excel con Hora
     DateTime ahora = DateTime.now();
     String horaTexto = "${ahora.hour}:${ahora.minute}:${ahora.second}";
-    _baseDeDatosLocal.add([horaTexto, ...datos]);
+    // Creamos una copia de los datos actuales para el excel
+    _baseDeDatosLocal.add([horaTexto, ..._datosPersistentes]);
 
     setState(() {
-      _ultimoMensaje = datos;
-      _conectando = false;
+      _tiempo++;
 
       try {
-        // 1. TEMPERATURAS
-        for (int i = 0; i < 7; i++) {
-          String datoRaw = (datos.length > i) ? datos[i] : "0";
-          double val = double.tryParse(datoRaw) ?? 0.0;
+        // ACTUALIZAR GRÁFICAS USANDO LA MEMORIA PERSISTENTE
 
-          // Filtro anti-picos
-          if (val > 200 || val < -10) {
-            val = (_historialTemps[i].isNotEmpty) ? _historialTemps[i].last.y : 0.0;
-          }
+        // 1. Temperaturas (a-g -> Indices 0-6)
+        for (int i = 0; i < 7; i++) {
+          double val = double.parse(_datosPersistentes[i]);
+          // Filtro visual gráfica (Max 200)
+          if (val > 200) val = _historialTemps[i].isNotEmpty ? _historialTemps[i].last.y : 0.0;
+
           _historialTemps[i].add(FlSpot(_tiempo, val));
           _limpiarHistorial(_historialTemps[i]);
         }
 
-        // 2. HUMEDAD
-        String datoHum = (datos.length > 7) ? datos[7] : "0";
-        double valHum = double.tryParse(datoHum) ?? 0.0;
+        // 2. Humedad (h -> Indice 7)
+        double valHum = double.parse(_datosPersistentes[7]);
         if (valHum > 100) valHum = _historialHumedad.isNotEmpty ? _historialHumedad.last.y : 0.0;
-
         _historialHumedad.add(FlSpot(_tiempo, valHum));
         _limpiarHistorial(_historialHumedad);
 
-        // 3. PRESIÓN ATM
-        String datoPres = (datos.length > 8) ? datos[8] : "0";
-        double valPresAtm = double.tryParse(datoPres) ?? 0.0;
-        if (valPresAtm > 200000) valPresAtm = 101300.0;
-
+        // 3. Presión Atm (j -> Indice 9 - OJO: El usuario dijo j es PresAtm)
+        // Nota: En tu lista anterior el 8 era PresAtm, pero ahora según tu regla:
+        // a-g(0-6), h(7), i(8 TempAmb), j(9 PresAtm). AJUSTADO AL NUEVO ORDEN.
+        double valPresAtm = double.parse(_datosPersistentes[9]);
         _historialPresionAtm.add(FlSpot(_tiempo, valPresAtm));
         _limpiarHistorial(_historialPresionAtm);
 
-        // 4. TEMP AMB
-        String datoAmb = (datos.length > 9) ? datos[9] : "0";
-        double valTempAmb = double.tryParse(datoAmb) ?? 0.0;
-
+        // 4. Temp Amb (i -> Indice 8)
+        double valTempAmb = double.parse(_datosPersistentes[8]);
         _historialTempAmb.add(FlSpot(_tiempo, valTempAmb));
         _limpiarHistorial(_historialTempAmb);
 
-        // 5. POTENCIA (Usamos el índice 22 basado en tus fotos)
-        if(datos.length > 22){
-          String potRaw = datos[22]; // Indice 22 es Potencia según tus fotos (168)
-          double valPot = double.tryParse(potRaw) ?? 0.0;
-
-          if (valPot > 5000) valPot = 0.0; // Filtro básico
-
-          _historialPotencia.add(FlSpot(_tiempo, valPot));
-          _limpiarHistorial(_historialPotencia);
-        }
-
-        _tiempo++;
+        // 5. Potencia (x -> Indice 23)
+        double valPot = double.parse(_datosPersistentes[23]);
+        if (valPot > 5000) valPot = 0.0;
+        _historialPotencia.add(FlSpot(_tiempo, valPot));
+        _limpiarHistorial(_historialPotencia);
 
       } catch (e) {
-        print("Error datos: $e");
+        print("Error graficando: $e");
       }
     });
   }
@@ -203,31 +236,33 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
     }
   }
 
-  // ... (Tus funciones _iniciarSimulacion, _detenerTodo, _conectar, etc. van aquí igual que antes) ...
-  // COPIA AQUÍ LAS FUNCIONES QUE FALTAN:
+  // --- FUNCIONES AUXILIARES ---
   void _iniciarSimulacion() {
     setState(() {
       _conectando = true;
       _dispositivoSeleccionado = const BluetoothDevice(address: '00:00', name: 'SIMULADOR');
       _limpiarTodosLosHistoriales();
       _tiempo = 0;
+      _datosPersistentes = List.filled(24, "0.00"); // Resetear memoria
     });
 
     _timerDemo = Timer.periodic(const Duration(seconds: 1), (timer) {
-      // Simulación simple
-      _procesarNuevosDatos("20.5a21.0a22.0a23.0a24.0a25.0a26.0a50.0a101300a25.0a0.2a0.0a0.0a80000.0a0.0a0.0a0.0a0a0a0a0a110.0a160.0a1.5a");
+      // Simulación enviando letras desordenadas para probar el algoritmo
+      String sim = "a20.5b21.0x1500.0h45.5j101300v1.5w110.0";
+      // Enviamos como lista de int para simular bluetooth real
+      _procesarBufferInteligente(); // Esto leería _buffer, lo simulamos directo:
+      // En realidad para simular, inyectamos al stream o llamamos una función auxiliar
+      // Para simplificar, llenamos _buffer y llamamos:
+      _buffer += sim;
+      _procesarBufferInteligente();
     });
   }
 
   void _detenerTodo() {
-    if (_timerDemo != null && _timerDemo!.isActive) {
-      _timerDemo?.cancel();
-    } else {
-      MonitorService().desconectar();
-    }
+    if (_timerDemo != null && _timerDemo!.isActive) _timerDemo?.cancel();
+    MonitorService().desconectar();
     setState(() {
       _dispositivoSeleccionado = null;
-      _ultimoMensaje = [];
       _conectando = false;
       _limpiarTodosLosHistoriales();
       _buffer = "";
@@ -247,6 +282,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
       _conectando = true;
       _tiempo = 0;
       _limpiarTodosLosHistoriales();
+      _datosPersistentes = List.filled(24, "0.00");
       _buffer = "";
     });
     bool exito = await MonitorService().conectarDispositivo(device);
@@ -266,19 +302,41 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
 
   Future<void> _exportarYCompartir() async {
     if (_baseDeDatosLocal.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("No hay datos para exportar")));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("No hay datos")));
       return;
     }
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Generando Excel...")));
     bool exito = await ExcelService().exportarDatos(_baseDeDatosLocal);
-    if (!exito) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Error al generar el archivo")));
-    }
+    if (!exito) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Error al generar")));
   }
 
   @override
   Widget build(BuildContext context) {
-    // TODO: implement build
-    throw UnimplementedError();
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Monitor de Fluidos"),
+        backgroundColor: Colors.blue[800],
+        foregroundColor: Colors.white,
+      ),
+      body: _dispositivoSeleccionado == null
+          ? VistaConexion(
+        devices: _devices,
+        conectando: _conectando,
+        onConectar: _conectar,
+        onDemo: _iniciarSimulacion,
+      )
+          : VistaMonitor(
+        nombreDispositivo: _dispositivoSeleccionado!.name ?? "Dispositivo",
+        // AQUI PASAMOS LA MEMORIA PERSISTENTE QUE SIEMPRE TIENE 24 DATOS
+        datosRaw: _datosPersistentes,
+        historialTemps: _historialTemps,
+        historialPresion: _historialPresionAtm,
+        historialHumedad: _historialHumedad,
+        historialTempAmb: _historialTempAmb,
+        historialPotencia: _historialPotencia,
+        onDesconectar: _detenerTodo,
+        onExportar: _exportarYCompartir,
+      ),
+    );
   }
 }

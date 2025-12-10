@@ -43,10 +43,8 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
     _tabController = TabController(length: 4, vsync: this);
   }
 
-  // --- FUNCIÓN DE SEGURIDAD PARA EVITAR EL ERROR DE RANGO ---
+  // Lectura segura
   String _getDato(int index) {
-    // Si el índice que pedimos es mayor o igual a la cantidad de datos que tenemos,
-    // devolvemos "0" o "--" para que no crashee la app.
     if (index < widget.datosRaw.length) {
       return widget.datosRaw[index];
     }
@@ -55,12 +53,11 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
 
   @override
   Widget build(BuildContext context) {
-    bool datosListos = widget.datosRaw.length >= 20;
     final List<Color> colores = SensorChartMulti.coloresFijos;
 
     return Column(
       children: [
-        // --- CABECERA ---
+        // CABECERA
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           color: Colors.grey[200],
@@ -73,7 +70,7 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
           ),
         ),
 
-        // --- GRÁFICAS ---
+        // GRÁFICAS
         Container(
           color: Colors.white,
           height: 280,
@@ -109,16 +106,14 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
 
         const Divider(thickness: 2),
 
-        // --- LISTA ---
+        // LISTA DE TARJETAS
         Expanded(
-          child: !datosListos
-              ? const Center(child: Text("Esperando datos de la máquina..."))
-              : ListView(
+          child: ListView(
             padding: const EdgeInsets.all(12),
             children: [
               _tituloSeccion("Temperaturas de Proceso"),
 
-              // AQUI USAMOS _getDato(index) EN LUGAR DE widget.datosRaw[index]
+              // a=0 ... g=6
               GridView.count(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
@@ -134,13 +129,16 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
                   _cardSensor("S5", _getDato(4), "°C", Colors.orange, widget.historialTemps[4], colorGrafica: colores[4]),
                   _cardSensor("S6", _getDato(5), "°C", Colors.orange, widget.historialTemps[5], colorGrafica: colores[5]),
                   _cardSensor("S7", _getDato(6), "°C", Colors.orange, widget.historialTemps[6], colorGrafica: colores[6]),
-                  _cardSensor("Ambiente", _getDato(9), "°C", Colors.green, widget.historialTempAmb),
+
+                  // Dato i (Indice 8) es Temp Ambiente
+                  _cardSensor("Ambiente", _getDato(8), "°C", Colors.green, widget.historialTempAmb),
                 ],
               ),
 
               const SizedBox(height: 15),
 
               _tituloSeccion("Presiones del Sistema"),
+              // k=10 ... q=16
               GridView.count(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
@@ -164,37 +162,31 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
               _tituloSeccion("Sistema Eléctrico"),
               Row(
                 children: [
-                  // CORRECCIÓN DE ÍNDICES AQUÍ:
-                  // Voltaje es el dato 21 (según tu foto del multímetro)
-                  Expanded(child: _cardMini("Voltaje", _getDato(21), "V", color: Colors.yellow[800]!)),
-
+                  // w=22 (Voltaje), v=21 (Corriente), x=23 (Potencia)
+                  Expanded(child: _cardMini("Voltaje", _getDato(22), "V", color: Colors.yellow[800]!)),
                   const SizedBox(width: 5),
-
-                  // Corriente es el dato 23
-                  Expanded(child: _cardMini("Corriente", _getDato(23), "A", color: Colors.blue[800]!)),
-
+                  Expanded(child: _cardMini("Corriente", _getDato(21), "A", color: Colors.blue[800]!)),
                   const SizedBox(width: 5),
-
-                  // Potencia es el dato 22
-                  Expanded(child: _cardMini("Potencia", _getDato(22), "W", color: Colors.purple)),
+                  Expanded(child: _cardMini("Potencia", _getDato(23), "W", color: Colors.purple)),
                 ],
               ),
 
               const SizedBox(height: 15),
 
               if(_hayErrores()) _tituloSeccion("ALERTAS DEL SISTEMA", color: Colors.red),
-              if(_getDato(17) == "1") _alerta("Falla en Sensor"),
-              if(_getDato(18) == "1") _alerta("Falla Reflujo"),
-              if(_getDato(19) == "1") _alerta("Fuga Detectada"),
-              if(_getDato(20) == "1") _alerta("Falla Válvula"),
+              if(_getDato(17) == "1") _alerta("Falla en Sensor"), // r
+              if(_getDato(18) == "1") _alerta("Falla Reflujo"), // s
+              if(_getDato(19) == "1") _alerta("Fuga Detectada"), // t
+              if(_getDato(20) == "1") _alerta("Falla Válvula"), // u
 
               const SizedBox(height: 10),
               _tituloSeccion("Ambiente"),
               Row(
                 children: [
+                  // h=7 (Humedad), j=9 (PresAtm)
                   Expanded(child: _cardSensor("Humedad", _getDato(7), "%", Colors.lightBlue, widget.historialHumedad)),
                   const SizedBox(width: 10),
-                  Expanded(child: _cardSensor("Presión Atm", _getDato(8), "Pa", Colors.blueGrey, widget.historialPresion)),
+                  Expanded(child: _cardSensor("Presión Atm", _getDato(9), "Pa", Colors.blueGrey, widget.historialPresion)),
                 ],
               ),
             ],
@@ -218,8 +210,7 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
     );
   }
 
-  // --- WIDGETS AUXILIARES ---
-
+  // AUXILIARES VISUALES
   Widget _tituloSeccion(String texto, {Color color = Colors.black}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
@@ -235,11 +226,7 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
     return GestureDetector(
       onTap: () {
         Navigator.push(context, MaterialPageRoute(builder: (_) => PantallaDetalle(
-            titulo: titulo,
-            valorActual: valor,
-            unidad: unidad,
-            historial: historial,
-            colorTema: colorTema
+            titulo: titulo, valorActual: valor, unidad: unidad, historial: historial, colorTema: colorTema
         )));
       },
       child: Container(
@@ -253,17 +240,12 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
         child: Row(
           children: [
             if (colorGrafica != null) ...[
-              Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(color: colorGrafica, shape: BoxShape.circle),
-              ),
+              Container(width: 12, height: 12, decoration: BoxDecoration(color: colorGrafica, shape: BoxShape.circle)),
               const SizedBox(width: 8),
             ] else ...[
               Icon(Icons.thermostat, color: colorTema, size: 28),
               const SizedBox(width: 8),
             ],
-
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -282,34 +264,23 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
 
   Widget _cardMini(String titulo, String valor, String unidad, {Color color = Colors.blueGrey}) {
     return Container(
-      decoration: BoxDecoration(
-          color: Colors.grey[50],
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.grey[300]!)
-      ),
+      decoration: BoxDecoration(color: Colors.grey[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey[300]!)),
       padding: const EdgeInsets.all(5),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(titulo, style: const TextStyle(fontSize: 10), textAlign: TextAlign.center,),
-          Text("$valor $unidad", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color)),
-        ],
-      ),
+      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Text(titulo, style: const TextStyle(fontSize: 10), textAlign: TextAlign.center,),
+        Text("$valor $unidad", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color)),
+      ]),
     );
   }
 
   Widget _alerta(String mensaje){
-    return Card(
-      color: Colors.red[50],
-      child: ListTile(
-        leading: const Icon(Icons.warning, color: Colors.red),
-        title: Text(mensaje, style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-      ),
-    );
+    return Card(color: Colors.red[50], child: ListTile(
+      leading: const Icon(Icons.warning, color: Colors.red),
+      title: Text(mensaje, style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+    ));
   }
 
   bool _hayErrores(){
-    // Usamos _getDato para evitar error de rango aquí también
     return (_getDato(17)=="1" || _getDato(18)=="1" || _getDato(19)=="1" || _getDato(20)=="1");
   }
 }
