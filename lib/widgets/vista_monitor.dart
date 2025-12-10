@@ -164,12 +164,19 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
               _tituloSeccion("Sistema Eléctrico"),
               Row(
                 children: [
-                  // El error ocurría aquí en indices 22 y 23. Ahora con _getDato ya no fallará.
-                  Expanded(child: _cardMini("Voltaje", _getDato(22), "V", color: Colors.yellow[800]!)),
+                  // CORRECCIÓN DE ÍNDICES AQUÍ:
+                  // Voltaje es el dato 21 (según tu foto del multímetro)
+                  Expanded(child: _cardMini("Voltaje", _getDato(21), "V", color: Colors.yellow[800]!)),
+
                   const SizedBox(width: 5),
-                  Expanded(child: _cardMini("Corriente", _getDato(21), "A", color: Colors.blue[800]!)),
+
+                  // Corriente es el dato 23
+                  Expanded(child: _cardMini("Corriente", _getDato(23), "A", color: Colors.blue[800]!)),
+
                   const SizedBox(width: 5),
-                  Expanded(child: _cardMini("Potencia", _getDato(23), "W", color: Colors.purple)),
+
+                  // Potencia es el dato 22
+                  Expanded(child: _cardMini("Potencia", _getDato(22), "W", color: Colors.purple)),
                 ],
               ),
 

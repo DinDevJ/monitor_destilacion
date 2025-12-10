@@ -17,7 +17,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  WakelockPlus.enable(); // <--- ESTO MANTIENE LA PANTALLA ENCENDIDA
+  WakelockPlus.enable();
   runApp(const MyApp());
 }
 
@@ -59,50 +59,34 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
   double _tiempo = 0;
   Timer? _timerDemo;
 
-  // --- BUFFER MEJORADO ---
   String _buffer = "";
 
-  @override
   @override
   void initState() {
     super.initState();
     _pedirPermisos();
 
-    // ESCUCHAR BLUETOOTH
     MonitorService().dataStream.listen((dynamic data) {
       try {
         String mensajeParcial = "";
 
-        // CASO 1: Si llega como lista de textos (tu caso actual)
         if (data is List<String>) {
-          // Unimos usando "a" para restaurar el formato original
           mensajeParcial = data.join("a");
-          // Agregamos una "a" extra al final por si acaso el servicio la borró
-          mensajeParcial += "a";
-        }
-        // CASO 2: Si llega como lista de números (bytes crudos)
-        else if (data is List<int>) {
+          if (!mensajeParcial.endsWith("a")) mensajeParcial += "a";
+        } else if (data is List<int>) {
           mensajeParcial = String.fromCharCodes(data);
-        }
-        // CASO 3: Si llega como texto
-        else if (data is String) {
+        } else if (data is String) {
           mensajeParcial = data;
-        }
-        // CASO 4: Lista dinámica genérica
-        else if (data is List) {
+        } else if (data is List) {
           mensajeParcial = data.join("a") + "a";
         }
 
-        // --- BUFFER ACUMULADOR ---
         _buffer += mensajeParcial;
 
-        // Limpieza de seguridad: A veces se acumulan demasiadas "a" juntas (ej: "aa"), las limpiamos
-        // para que no generen datos vacíos.
         while(_buffer.contains("aa")) {
           _buffer = _buffer.replaceAll("aa", "a");
         }
 
-        // ESTRATEGIA: BUSCAR EL SALTO DE LÍNEA (\n)
         if (_buffer.contains('\n')) {
           List<String> lineas = _buffer.split('\n');
           for (int i = 0; i < lineas.length - 1; i++) {
@@ -111,19 +95,14 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
             }
           }
           _buffer = lineas.last;
-        }
-        // PLAN B: Conteo de 'a'
-        else {
-          // Si el buffer empieza a tener muchos datos, intentamos procesar
-          // "split" nos da un array. Si tenemos 25 pedazos, seguro hay 24 datos completos.
+        } else {
           if (_buffer.split("a").length >= 25) {
             _procesarNuevosDatos(_buffer);
             _buffer = "";
           }
         }
-
       } catch (e) {
-        print("Error recibiendo datos: $e");
+        print("Error: $e");
       }
     });
   }
@@ -131,56 +110,78 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
   void _procesarNuevosDatos(String mensajeCrudo) {
     if (!mounted) return;
 
-    // Quitamos espacios y saltos de línea al inicio/final
     String mensajeLimpio = mensajeCrudo.trim();
-
-    // DEBUG: Ver qué estamos intentando procesar
-    print("PROCESANDO: $mensajeLimpio");
-
     List<String> datos = mensajeLimpio.split("a");
 
-    // Tu máquina manda 24 datos. Si llegan menos de 20, algo anda mal.
-    if (datos.length < 20) {
-      print("Datos insuficientes: ${datos.length}");
-      return;
+    if (datos.length < 20) return;
+
+    // --- CORRECCIÓN UNIDADES: PASCALES A PSI ---
+    // Recorremos los datos de presión (indices 10 al 16)
+    // Si vemos un número gigante (> 50,000), asumimos Pascales y convertimos a Psi.
+    for(int k=10; k<=16; k++) {
+      if(datos.length > k) {
+        double val = double.tryParse(datos[k]) ?? 0.0;
+        if(val > 50000) {
+          // 1 Psi = 6894.76 Pa. 
+          // Ejemplo: 81065 Pa / 6894.76 = 11.75 Psi
+          double valPsi = val / 6894.76;
+          datos[k] = valPsi.toStringAsFixed(2); // Actualizamos el dato en la lista
+        }
+      }
     }
 
-    // Agregar Hora para Excel
     DateTime ahora = DateTime.now();
     String horaTexto = "${ahora.hour}:${ahora.minute}:${ahora.second}";
     _baseDeDatosLocal.add([horaTexto, ...datos]);
 
     setState(() {
       _ultimoMensaje = datos;
-      _conectando = false; // ¡Esto quita el mensaje de "Esperando datos..."!
+      _conectando = false;
 
       try {
-        // 1. Temperaturas (Indices 0 al 6)
+        // 1. TEMPERATURAS
         for (int i = 0; i < 7; i++) {
-          double val = double.tryParse(datos[i]) ?? 0.0;
+          String datoRaw = (datos.length > i) ? datos[i] : "0";
+          double val = double.tryParse(datoRaw) ?? 0.0;
+
+          // Filtro anti-picos
+          if (val > 200 || val < -10) {
+            val = (_historialTemps[i].isNotEmpty) ? _historialTemps[i].last.y : 0.0;
+          }
           _historialTemps[i].add(FlSpot(_tiempo, val));
           _limpiarHistorial(_historialTemps[i]);
         }
 
-        // 2. Ambiente (Indices 7, 8 y 9)
-        // Usamos lógica defensiva (si falta un dato, ponemos 0.0)
-        double valHum = datos.length > 7 ? (double.tryParse(datos[7]) ?? 0.0) : 0.0;
-        double valPresAtm = datos.length > 8 ? (double.tryParse(datos[8]) ?? 0.0) : 0.0;
-        double valTempAmb = datos.length > 9 ? (double.tryParse(datos[9]) ?? 0.0) : 0.0;
+        // 2. HUMEDAD
+        String datoHum = (datos.length > 7) ? datos[7] : "0";
+        double valHum = double.tryParse(datoHum) ?? 0.0;
+        if (valHum > 100) valHum = _historialHumedad.isNotEmpty ? _historialHumedad.last.y : 0.0;
 
         _historialHumedad.add(FlSpot(_tiempo, valHum));
-        _historialPresionAtm.add(FlSpot(_tiempo, valPresAtm));
-        _historialTempAmb.add(FlSpot(_tiempo, valTempAmb));
-
         _limpiarHistorial(_historialHumedad);
+
+        // 3. PRESIÓN ATM
+        String datoPres = (datos.length > 8) ? datos[8] : "0";
+        double valPresAtm = double.tryParse(datoPres) ?? 0.0;
+        if (valPresAtm > 200000) valPresAtm = 101300.0;
+
+        _historialPresionAtm.add(FlSpot(_tiempo, valPresAtm));
         _limpiarHistorial(_historialPresionAtm);
+
+        // 4. TEMP AMB
+        String datoAmb = (datos.length > 9) ? datos[9] : "0";
+        double valTempAmb = double.tryParse(datoAmb) ?? 0.0;
+
+        _historialTempAmb.add(FlSpot(_tiempo, valTempAmb));
         _limpiarHistorial(_historialTempAmb);
 
-        // 3. Potencia (Indice 23 - El último)
-        if(datos.length > 23){
-          // A veces el último dato trae basura invisible (como \r), lo limpiamos
-          String potLimpia = datos[23].replaceAll(RegExp(r'[^0-9.]'), '');
-          double valPot = double.tryParse(potLimpia) ?? 0.0;
+        // 5. POTENCIA (Usamos el índice 22 basado en tus fotos)
+        if(datos.length > 22){
+          String potRaw = datos[22]; // Indice 22 es Potencia según tus fotos (168)
+          double valPot = double.tryParse(potRaw) ?? 0.0;
+
+          if (valPot > 5000) valPot = 0.0; // Filtro básico
+
           _historialPotencia.add(FlSpot(_tiempo, valPot));
           _limpiarHistorial(_historialPotencia);
         }
@@ -188,7 +189,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
         _tiempo++;
 
       } catch (e) {
-        print("Error en lógica gráfica: $e");
+        print("Error datos: $e");
       }
     });
   }
@@ -202,7 +203,8 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
     }
   }
 
-  // --- MISMAS FUNCIONES AUXILIARES DE SIEMPRE ---
+  // ... (Tus funciones _iniciarSimulacion, _detenerTodo, _conectar, etc. van aquí igual que antes) ...
+  // COPIA AQUÍ LAS FUNCIONES QUE FALTAN:
   void _iniciarSimulacion() {
     setState(() {
       _conectando = true;
@@ -212,17 +214,8 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
     });
 
     _timerDemo = Timer.periodic(const Duration(seconds: 1), (timer) {
-      final r = Random();
-      List<String> fakeValues = [];
-      for (int i = 0; i < 7; i++) fakeValues.add((20 + r.nextDouble() * 10).toStringAsFixed(1));
-      fakeValues.add((50 + r.nextDouble() * 5).toStringAsFixed(1));
-      fakeValues.add((1013 + r.nextDouble() * 10).toStringAsFixed(0));
-      fakeValues.add((25 + r.nextDouble() * 2).toStringAsFixed(1));
-      for (int i = 0; i < 7; i++) fakeValues.add((10 + r.nextDouble() * 2).toStringAsFixed(1));
-      fakeValues.add("0"); fakeValues.add("0"); fakeValues.add("0"); fakeValues.add("0");
-      fakeValues.add("5.2"); fakeValues.add("127.0");
-      fakeValues.add((600 + r.nextDouble() * 50).toStringAsFixed(0));
-      _procesarNuevosDatos(fakeValues.join("a"));
+      // Simulación simple
+      _procesarNuevosDatos("20.5a21.0a22.0a23.0a24.0a25.0a26.0a50.0a101300a25.0a0.2a0.0a0.0a80000.0a0.0a0.0a0.0a0a0a0a0a110.0a160.0a1.5a");
     });
   }
 
@@ -237,6 +230,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
       _ultimoMensaje = [];
       _conectando = false;
       _limpiarTodosLosHistoriales();
+      _buffer = "";
     });
   }
 
@@ -284,30 +278,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Monitor de Fluidos"),
-        backgroundColor: Colors.blue[800],
-        foregroundColor: Colors.white,
-      ),
-      body: _dispositivoSeleccionado == null
-          ? VistaConexion(
-        devices: _devices,
-        conectando: _conectando,
-        onConectar: _conectar,
-        onDemo: _iniciarSimulacion,
-      )
-          : VistaMonitor(
-        nombreDispositivo: _dispositivoSeleccionado!.name ?? "Dispositivo",
-        datosRaw: _ultimoMensaje,
-        historialTemps: _historialTemps,
-        historialPresion: _historialPresionAtm,
-        historialHumedad: _historialHumedad,
-        historialTempAmb: _historialTempAmb,
-        historialPotencia: _historialPotencia,
-        onDesconectar: _detenerTodo,
-        onExportar: _exportarYCompartir,
-      ),
-    );
+    // TODO: implement build
+    throw UnimplementedError();
   }
 }
