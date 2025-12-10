@@ -4,7 +4,7 @@ Remasterizacion del monitor de destilacion antiguo. Servicio Social.
 
 ## A TOMAR EN CUENTA
 
-Esta aplicacion es una remasterizacion de una aplicacion vieja pero casi no tiene nada de esta
+Esta aplicacion es una remasterizacion de una aplicacion vieja pero casi no tiene nada de esta,
 unicamente se tomo en cuenta el algoritmo para leer los codigos de la maquina pero este a su vez
 fue mejorado y optimizado por lo que se podria decir que es una aplicacion nueva
 

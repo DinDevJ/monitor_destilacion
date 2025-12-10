@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'sensor_chart.dart';
-import 'sensor_chart_multi.dart'; // Importamos para acceder a la lista de colores
+import 'sensor_chart_multi.dart';
 import 'pantalla_detalle.dart';
 
 class VistaMonitor extends StatefulWidget {
@@ -43,11 +43,19 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
     _tabController = TabController(length: 4, vsync: this);
   }
 
+  // --- FUNCIÓN DE SEGURIDAD PARA EVITAR EL ERROR DE RANGO ---
+  String _getDato(int index) {
+    // Si el índice que pedimos es mayor o igual a la cantidad de datos que tenemos,
+    // devolvemos "0" o "--" para que no crashee la app.
+    if (index < widget.datosRaw.length) {
+      return widget.datosRaw[index];
+    }
+    return "--";
+  }
+
   @override
   Widget build(BuildContext context) {
     bool datosListos = widget.datosRaw.length >= 20;
-
-    // Obtenemos los colores oficiales de la gráfica
     final List<Color> colores = SensorChartMulti.coloresFijos;
 
     return Column(
@@ -110,7 +118,7 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
             children: [
               _tituloSeccion("Temperaturas de Proceso"),
 
-              // AQUI PASAMOS EL COLOR ESPECÍFICO A CADA TARJETA
+              // AQUI USAMOS _getDato(index) EN LUGAR DE widget.datosRaw[index]
               GridView.count(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
@@ -119,16 +127,14 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
                 mainAxisSpacing: 8,
                 crossAxisSpacing: 8,
                 children: [
-                  _cardSensor("S1 (Entrada)", widget.datosRaw[0], "°C", Colors.orange, widget.historialTemps[0], colorGrafica: colores[0]),
-                  _cardSensor("S2", widget.datosRaw[1], "°C", Colors.orange, widget.historialTemps[1], colorGrafica: colores[1]),
-                  _cardSensor("S3", widget.datosRaw[2], "°C", Colors.orange, widget.historialTemps[2], colorGrafica: colores[2]),
-                  _cardSensor("S4", widget.datosRaw[3], "°C", Colors.orange, widget.historialTemps[3], colorGrafica: colores[3]),
-                  _cardSensor("S5", widget.datosRaw[4], "°C", Colors.orange, widget.historialTemps[4], colorGrafica: colores[4]),
-                  _cardSensor("S6", widget.datosRaw[5], "°C", Colors.orange, widget.historialTemps[5], colorGrafica: colores[5]),
-                  _cardSensor("S7", widget.datosRaw[6], "°C", Colors.orange, widget.historialTemps[6], colorGrafica: colores[6]),
-
-                  // Ambiente no sale en la gráfica multi, no lleva bolita
-                  _cardSensor("Ambiente", widget.datosRaw[9], "°C", Colors.green, widget.historialTempAmb),
+                  _cardSensor("S1 (Entrada)", _getDato(0), "°C", Colors.orange, widget.historialTemps[0], colorGrafica: colores[0]),
+                  _cardSensor("S2", _getDato(1), "°C", Colors.orange, widget.historialTemps[1], colorGrafica: colores[1]),
+                  _cardSensor("S3", _getDato(2), "°C", Colors.orange, widget.historialTemps[2], colorGrafica: colores[2]),
+                  _cardSensor("S4", _getDato(3), "°C", Colors.orange, widget.historialTemps[3], colorGrafica: colores[3]),
+                  _cardSensor("S5", _getDato(4), "°C", Colors.orange, widget.historialTemps[4], colorGrafica: colores[4]),
+                  _cardSensor("S6", _getDato(5), "°C", Colors.orange, widget.historialTemps[5], colorGrafica: colores[5]),
+                  _cardSensor("S7", _getDato(6), "°C", Colors.orange, widget.historialTemps[6], colorGrafica: colores[6]),
+                  _cardSensor("Ambiente", _getDato(9), "°C", Colors.green, widget.historialTempAmb),
                 ],
               ),
 
@@ -143,13 +149,13 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
                 mainAxisSpacing: 5,
                 crossAxisSpacing: 5,
                 children: [
-                  _cardMini("P. Hervidor", widget.datosRaw[10], "Psi"),
-                  _cardMini("P. Sensor 2", widget.datosRaw[11], "Psi"),
-                  _cardMini("P. Sensor 3", widget.datosRaw[12], "Psi"),
-                  _cardMini("P. Sensor 4", widget.datosRaw[13], "Psi"),
-                  _cardMini("P. Sensor 5", widget.datosRaw[14], "Psi"),
-                  _cardMini("P. Sensor 6", widget.datosRaw[15], "Psi"),
-                  _cardMini("P. Sensor 7", widget.datosRaw[16], "Psi"),
+                  _cardMini("P. Hervidor", _getDato(10), "Psi"),
+                  _cardMini("P. Sensor 2", _getDato(11), "Psi"),
+                  _cardMini("P. Sensor 3", _getDato(12), "Psi"),
+                  _cardMini("P. Sensor 4", _getDato(13), "Psi"),
+                  _cardMini("P. Sensor 5", _getDato(14), "Psi"),
+                  _cardMini("P. Sensor 6", _getDato(15), "Psi"),
+                  _cardMini("P. Sensor 7", _getDato(16), "Psi"),
                 ],
               ),
 
@@ -158,29 +164,30 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
               _tituloSeccion("Sistema Eléctrico"),
               Row(
                 children: [
-                  Expanded(child: _cardMini("Voltaje", widget.datosRaw[22], "V", color: Colors.yellow[800]!)),
+                  // El error ocurría aquí en indices 22 y 23. Ahora con _getDato ya no fallará.
+                  Expanded(child: _cardMini("Voltaje", _getDato(22), "V", color: Colors.yellow[800]!)),
                   const SizedBox(width: 5),
-                  Expanded(child: _cardMini("Corriente", widget.datosRaw[21], "A", color: Colors.blue[800]!)),
+                  Expanded(child: _cardMini("Corriente", _getDato(21), "A", color: Colors.blue[800]!)),
                   const SizedBox(width: 5),
-                  Expanded(child: _cardMini("Potencia", widget.datosRaw.length > 23 ? widget.datosRaw[23] : "-", "W", color: Colors.purple)),
+                  Expanded(child: _cardMini("Potencia", _getDato(23), "W", color: Colors.purple)),
                 ],
               ),
 
               const SizedBox(height: 15),
 
               if(_hayErrores()) _tituloSeccion("ALERTAS DEL SISTEMA", color: Colors.red),
-              if(widget.datosRaw[17] == "1") _alerta("Falla en Sensor"),
-              if(widget.datosRaw[18] == "1") _alerta("Falla Reflujo"),
-              if(widget.datosRaw[19] == "1") _alerta("Fuga Detectada"),
-              if(widget.datosRaw[20] == "1") _alerta("Falla Válvula"),
+              if(_getDato(17) == "1") _alerta("Falla en Sensor"),
+              if(_getDato(18) == "1") _alerta("Falla Reflujo"),
+              if(_getDato(19) == "1") _alerta("Fuga Detectada"),
+              if(_getDato(20) == "1") _alerta("Falla Válvula"),
 
               const SizedBox(height: 10),
               _tituloSeccion("Ambiente"),
               Row(
                 children: [
-                  Expanded(child: _cardSensor("Humedad", widget.datosRaw[7], "%", Colors.lightBlue, widget.historialHumedad)),
+                  Expanded(child: _cardSensor("Humedad", _getDato(7), "%", Colors.lightBlue, widget.historialHumedad)),
                   const SizedBox(width: 10),
-                  Expanded(child: _cardSensor("Presión Atm", widget.datosRaw[8], "Pa", Colors.blueGrey, widget.historialPresion)),
+                  Expanded(child: _cardSensor("Presión Atm", _getDato(8), "Pa", Colors.blueGrey, widget.historialPresion)),
                 ],
               ),
             ],
@@ -204,6 +211,8 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
     );
   }
 
+  // --- WIDGETS AUXILIARES ---
+
   Widget _tituloSeccion(String texto, {Color color = Colors.black}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
@@ -215,7 +224,6 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
     return Padding(padding: const EdgeInsets.all(12.0), child: chart);
   }
 
-  // --- MODIFICADO: AHORA ACEPTA "colorGrafica" ---
   Widget _cardSensor(String titulo, String valor, String unidad, Color colorTema, List<FlSpot> historial, {Color? colorGrafica}) {
     return GestureDetector(
       onTap: () {
@@ -224,7 +232,7 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
             valorActual: valor,
             unidad: unidad,
             historial: historial,
-            colorTema: colorTema // Para el detalle usamos el color temático (Naranja)
+            colorTema: colorTema
         )));
       },
       child: Container(
@@ -237,7 +245,6 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         child: Row(
           children: [
-            // 1. SI HAY COLOR DE GRÁFICA, MOSTRAMOS LA BOLITA
             if (colorGrafica != null) ...[
               Container(
                 width: 12,
@@ -246,12 +253,10 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
               ),
               const SizedBox(width: 8),
             ] else ...[
-              // Si no hay color de gráfica, mostramos el icono normal
               Icon(Icons.thermostat, color: colorTema, size: 28),
               const SizedBox(width: 8),
             ],
 
-            // 2. TEXTOS
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -297,7 +302,7 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
   }
 
   bool _hayErrores(){
-    if(widget.datosRaw.length < 21) return false;
-    return (widget.datosRaw[17]=="1" || widget.datosRaw[18]=="1" || widget.datosRaw[19]=="1" || widget.datosRaw[20]=="1");
+    // Usamos _getDato para evitar error de rango aquí también
+    return (_getDato(17)=="1" || _getDato(18)=="1" || _getDato(19)=="1" || _getDato(20)=="1");
   }
 }

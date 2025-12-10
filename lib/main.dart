@@ -16,7 +16,7 @@ import 'widgets/vista_monitor.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 void main() {
-  WidgetsFlutterBinding.ensureInitialized(); // <--- Agrega esto
+  WidgetsFlutterBinding.ensureInitialized();
   WakelockPlus.enable(); // <--- ESTO MANTIENE LA PANTALLA ENCENDIDA
   runApp(const MyApp());
 }
@@ -46,44 +46,84 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
   BluetoothDevice? _dispositivoSeleccionado;
   bool _conectando = false;
 
-  // --- DATOS PROCESADOS (Listas para gráficas) ---
+  // --- DATOS PROCESADOS ---
   List<List<FlSpot>> _historialTemps = List.generate(7, (_) => []);
-
-  // Ambiente
   List<FlSpot> _historialPresionAtm = [];
   List<FlSpot> _historialHumedad = [];
-  List<FlSpot> _historialTempAmb = []; // <--- ¡AQUÍ ESTABA EL FALTANTE!
-
-  // Eléctrico
+  List<FlSpot> _historialTempAmb = [];
   List<FlSpot> _historialPotencia = [];
 
-  // Datos crudos
   List<String> _ultimoMensaje = [];
+  List<List<String>> _baseDeDatosLocal = [];
 
   double _tiempo = 0;
   Timer? _timerDemo;
-  List<List<String>> _baseDeDatosLocal = [];
 
+  // --- BUFFER MEJORADO ---
+  String _buffer = "";
+
+  @override
   @override
   void initState() {
     super.initState();
     _pedirPermisos();
 
-    // Escuchar el stream
-    MonitorService().dataStream.listen((data) {
+    // ESCUCHAR BLUETOOTH
+    MonitorService().dataStream.listen((dynamic data) {
       try {
-        // 1. Convertimos lo que llegue a una lista de enteros segura
-        // "List<int>.from(data)" arregla cualquier problema de tipos (Uint8List vs List dynamic)
-        List<int> bytes = List<int>.from(data);
+        String mensajeParcial = "";
 
-        // 2. Convertimos esos números a letras (ASCII)
-        String mensajeTexto = String.fromCharCodes(bytes);
+        // CASO 1: Si llega como lista de textos (tu caso actual)
+        if (data is List<String>) {
+          // Unimos usando "a" para restaurar el formato original
+          mensajeParcial = data.join("a");
+          // Agregamos una "a" extra al final por si acaso el servicio la borró
+          mensajeParcial += "a";
+        }
+        // CASO 2: Si llega como lista de números (bytes crudos)
+        else if (data is List<int>) {
+          mensajeParcial = String.fromCharCodes(data);
+        }
+        // CASO 3: Si llega como texto
+        else if (data is String) {
+          mensajeParcial = data;
+        }
+        // CASO 4: Lista dinámica genérica
+        else if (data is List) {
+          mensajeParcial = data.join("a") + "a";
+        }
 
-        // 3. Enviamos el texto limpio a tu función
-        _procesarNuevosDatos(mensajeTexto);
+        // --- BUFFER ACUMULADOR ---
+        _buffer += mensajeParcial;
+
+        // Limpieza de seguridad: A veces se acumulan demasiadas "a" juntas (ej: "aa"), las limpiamos
+        // para que no generen datos vacíos.
+        while(_buffer.contains("aa")) {
+          _buffer = _buffer.replaceAll("aa", "a");
+        }
+
+        // ESTRATEGIA: BUSCAR EL SALTO DE LÍNEA (\n)
+        if (_buffer.contains('\n')) {
+          List<String> lineas = _buffer.split('\n');
+          for (int i = 0; i < lineas.length - 1; i++) {
+            if (lineas[i].trim().isNotEmpty) {
+              _procesarNuevosDatos(lineas[i]);
+            }
+          }
+          _buffer = lineas.last;
+        }
+        // PLAN B: Conteo de 'a'
+        else {
+          // Si el buffer empieza a tener muchos datos, intentamos procesar
+          // "split" nos da un array. Si tenemos 25 pedazos, seguro hay 24 datos completos.
+          if (_buffer.split("a").length >= 25) {
+            _procesarNuevosDatos(_buffer);
+            _buffer = "";
+          }
+        }
 
       } catch (e) {
-        print("Error al convertir datos Bluetooth: $e");
+        print("Error recibiendo datos: $e");
       }
     });
   }
@@ -91,17 +131,28 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
   void _procesarNuevosDatos(String mensajeCrudo) {
     if (!mounted) return;
 
-    List<String> datos = mensajeCrudo.split("a");
+    // Quitamos espacios y saltos de línea al inicio/final
+    String mensajeLimpio = mensajeCrudo.trim();
 
-    if (datos.length < 20) return;
+    // DEBUG: Ver qué estamos intentando procesar
+    print("PROCESANDO: $mensajeLimpio");
 
+    List<String> datos = mensajeLimpio.split("a");
+
+    // Tu máquina manda 24 datos. Si llegan menos de 20, algo anda mal.
+    if (datos.length < 20) {
+      print("Datos insuficientes: ${datos.length}");
+      return;
+    }
+
+    // Agregar Hora para Excel
     DateTime ahora = DateTime.now();
     String horaTexto = "${ahora.hour}:${ahora.minute}:${ahora.second}";
     _baseDeDatosLocal.add([horaTexto, ...datos]);
 
     setState(() {
       _ultimoMensaje = datos;
-      _conectando = false;
+      _conectando = false; // ¡Esto quita el mensaje de "Esperando datos..."!
 
       try {
         // 1. Temperaturas (Indices 0 al 6)
@@ -112,21 +163,24 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
         }
 
         // 2. Ambiente (Indices 7, 8 y 9)
-        double valHum = double.tryParse(datos[7]) ?? 0.0;
-        double valPresAtm = double.tryParse(datos[8]) ?? 0.0;
-        double valTempAmb = double.tryParse(datos[9]) ?? 0.0; // <--- LEEMOS EL DATO 9
+        // Usamos lógica defensiva (si falta un dato, ponemos 0.0)
+        double valHum = datos.length > 7 ? (double.tryParse(datos[7]) ?? 0.0) : 0.0;
+        double valPresAtm = datos.length > 8 ? (double.tryParse(datos[8]) ?? 0.0) : 0.0;
+        double valTempAmb = datos.length > 9 ? (double.tryParse(datos[9]) ?? 0.0) : 0.0;
 
         _historialHumedad.add(FlSpot(_tiempo, valHum));
         _historialPresionAtm.add(FlSpot(_tiempo, valPresAtm));
-        _historialTempAmb.add(FlSpot(_tiempo, valTempAmb)); // <--- GUARDAMOS EL DATO 9
+        _historialTempAmb.add(FlSpot(_tiempo, valTempAmb));
 
         _limpiarHistorial(_historialHumedad);
         _limpiarHistorial(_historialPresionAtm);
-        _limpiarHistorial(_historialTempAmb); // <--- LIMPIAMOS SU HISTORIAL
+        _limpiarHistorial(_historialTempAmb);
 
-        // 3. Potencia
+        // 3. Potencia (Indice 23 - El último)
         if(datos.length > 23){
-          double valPot = double.tryParse(datos[23]) ?? 0.0;
+          // A veces el último dato trae basura invisible (como \r), lo limpiamos
+          String potLimpia = datos[23].replaceAll(RegExp(r'[^0-9.]'), '');
+          double valPot = double.tryParse(potLimpia) ?? 0.0;
           _historialPotencia.add(FlSpot(_tiempo, valPot));
           _limpiarHistorial(_historialPotencia);
         }
@@ -134,7 +188,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
         _tiempo++;
 
       } catch (e) {
-        print("Error procesando datos: $e");
+        print("Error en lógica gráfica: $e");
       }
     });
   }
@@ -148,16 +202,12 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
     }
   }
 
+  // --- MISMAS FUNCIONES AUXILIARES DE SIEMPRE ---
   void _iniciarSimulacion() {
     setState(() {
       _conectando = true;
-      _dispositivoSeleccionado = const BluetoothDevice(address: '00:00', name: 'SIMULADOR PARA TESTS');
-
-      for(var lista in _historialTemps) lista.clear();
-      _historialPresionAtm.clear();
-      _historialHumedad.clear();
-      _historialTempAmb.clear(); // Limpiar también este
-      _historialPotencia.clear();
+      _dispositivoSeleccionado = const BluetoothDevice(address: '00:00', name: 'SIMULADOR');
+      _limpiarTodosLosHistoriales();
       _tiempo = 0;
     });
 
@@ -167,7 +217,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
       for (int i = 0; i < 7; i++) fakeValues.add((20 + r.nextDouble() * 10).toStringAsFixed(1));
       fakeValues.add((50 + r.nextDouble() * 5).toStringAsFixed(1));
       fakeValues.add((1013 + r.nextDouble() * 10).toStringAsFixed(0));
-      fakeValues.add((25 + r.nextDouble() * 2).toStringAsFixed(1)); // Temp Amb simulada
+      fakeValues.add((25 + r.nextDouble() * 2).toStringAsFixed(1));
       for (int i = 0; i < 7; i++) fakeValues.add((10 + r.nextDouble() * 2).toStringAsFixed(1));
       fakeValues.add("0"); fakeValues.add("0"); fakeValues.add("0"); fakeValues.add("0");
       fakeValues.add("5.2"); fakeValues.add("127.0");
@@ -186,23 +236,24 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
       _dispositivoSeleccionado = null;
       _ultimoMensaje = [];
       _conectando = false;
-      for(var lista in _historialTemps) lista.clear();
-      _historialPresionAtm.clear();
-      _historialHumedad.clear();
-      _historialTempAmb.clear();
-      _historialPotencia.clear();
+      _limpiarTodosLosHistoriales();
     });
+  }
+
+  void _limpiarTodosLosHistoriales(){
+    for(var lista in _historialTemps) lista.clear();
+    _historialPresionAtm.clear();
+    _historialHumedad.clear();
+    _historialTempAmb.clear();
+    _historialPotencia.clear();
   }
 
   Future<void> _conectar(BluetoothDevice device) async {
     setState(() {
       _conectando = true;
       _tiempo = 0;
-      for(var lista in _historialTemps) lista.clear();
-      _historialPresionAtm.clear();
-      _historialHumedad.clear();
-      _historialTempAmb.clear();
-      _historialPotencia.clear();
+      _limpiarTodosLosHistoriales();
+      _buffer = "";
     });
     bool exito = await MonitorService().conectarDispositivo(device);
     setState(() {
@@ -252,7 +303,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
         historialTemps: _historialTemps,
         historialPresion: _historialPresionAtm,
         historialHumedad: _historialHumedad,
-        historialTempAmb: _historialTempAmb, // <--- AHORA SÍ PASAMOS LA LISTA LLENA
+        historialTempAmb: _historialTempAmb,
         historialPotencia: _historialPotencia,
         onDesconectar: _detenerTodo,
         onExportar: _exportarYCompartir,
