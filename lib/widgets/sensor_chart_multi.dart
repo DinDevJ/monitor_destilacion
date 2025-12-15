@@ -4,6 +4,9 @@ import 'dart:math';
 
 class SensorChartMulti extends StatelessWidget {
   final List<List<FlSpot>> lineas;
+  // Si este índice es -1, mostramos TODAS. Si es 0-6, mostramos solo esa.
+  final int lineaSeleccionada;
+
   final double? minY;
   final double? maxY;
   final double? intervalY;
@@ -12,6 +15,7 @@ class SensorChartMulti extends StatelessWidget {
   const SensorChartMulti({
     super.key,
     required this.lineas,
+    this.lineaSeleccionada = -1, // Por defecto -1 (Todas)
     this.minY,
     this.maxY,
     this.intervalY,
@@ -19,12 +23,18 @@ class SensorChartMulti extends StatelessWidget {
   });
 
   static const List<Color> coloresFijos = [
-    Colors.redAccent, Colors.blueAccent, Colors.greenAccent, Colors.orangeAccent,
-    Colors.purpleAccent, Colors.tealAccent, Colors.pinkAccent,
+    Colors.redAccent,    // 0: Hervidor
+    Colors.blueAccent,   // 1: S2
+    Colors.greenAccent,  // 2: S3
+    Colors.orangeAccent, // 3: S4
+    Colors.purpleAccent, // 4: S5
+    Colors.tealAccent,   // 5: S6
+    Colors.pinkAccent,   // 6: S7
   ];
 
   @override
   Widget build(BuildContext context) {
+    // Calculamos X máximo para el desplazamiento
     double maxX = 0;
     for (var linea in lineas) {
       if (linea.isNotEmpty) maxX = max(maxX, linea.last.x);
@@ -37,6 +47,7 @@ class SensorChartMulti extends StatelessWidget {
         maxY: maxY,
         minX: maxX - 60,
         maxX: maxX,
+
         lineTouchData: LineTouchData(
           touchTooltipData: LineTouchTooltipData(
             tooltipBgColor: Colors.grey[900]!,
@@ -51,8 +62,9 @@ class SensorChartMulti extends StatelessWidget {
           ),
         ),
         gridData: FlGridData(
-          show: true, drawVerticalLine: false,
-          getDrawingHorizontalLine: (value) => FlLine(color: Colors.white12, strokeWidth: 1),
+          show: true,
+          drawVerticalLine: false,
+          getDrawingHorizontalLine: (val) => FlLine(color: Colors.white10, strokeWidth: 1),
         ),
         titlesData: FlTitlesData(
           bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -62,7 +74,12 @@ class SensorChartMulti extends StatelessWidget {
             sideTitles: SideTitles(
               showTitles: true, reservedSize: 40, interval: intervalY,
               getTitlesWidget: (value, meta) {
-                if (intervalY != null || value % 10 == 0) {
+                // Solo mostrar etiquetas si coinciden con el intervalo
+                if (intervalY != null) {
+                  if (value % intervalY! == 0) {
+                    return Text(value.toInt().toString(), style: const TextStyle(color: Colors.white54, fontSize: 10));
+                  }
+                } else if (value % 10 == 0) {
                   return Text(value.toInt().toString(), style: const TextStyle(color: Colors.white54, fontSize: 10));
                 }
                 return const SizedBox();
@@ -71,12 +88,25 @@ class SensorChartMulti extends StatelessWidget {
           ),
         ),
         borderData: FlBorderData(show: true, border: Border.all(color: Colors.white10)),
+
+        // AQUÍ ESTÁ LA LÓGICA DE SELECCIÓN
         lineBarsData: List.generate(lineas.length, (index) {
+          // Si hay una seleccionada y no es esta, la ocultamos (retornando una línea vacía o transparente)
+          if (lineaSeleccionada != -1 && lineaSeleccionada != index) {
+            return LineChartBarData(spots: [], show: false);
+          }
+
           return LineChartBarData(
-            spots: lineas[index], isCurved: true,
+            spots: lineas[index],
+            isCurved: true,
             color: coloresFijos[index % coloresFijos.length],
-            barWidth: 2, isStrokeCapRound: true, dotData: FlDotData(show: false),
-            belowBarData: BarAreaData(show: false),
+            barWidth: (lineaSeleccionada != -1) ? 4 : 2, // Más gruesa si está sola
+            isStrokeCapRound: true,
+            dotData: FlDotData(show: false),
+            belowBarData: BarAreaData(
+                show: (lineaSeleccionada != -1), // Sombra solo si está sola
+                color: coloresFijos[index % coloresFijos.length].withOpacity(0.1)
+            ),
           );
         }),
       ),

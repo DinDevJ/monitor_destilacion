@@ -3,17 +3,12 @@ import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'dart:async';
-import 'dart:math';
-import 'dart:io';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'bluetooth_service.dart';
 import 'excel_service.dart';
 import 'widgets/vista_conexion.dart';
-import 'widgets/vista_monitor.dart'; // Asegúrate de que este archivo existe y no tiene errores
-
-import 'package:wakelock_plus/wakelock_plus.dart';
+import 'widgets/vista_monitor.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,16 +26,8 @@ class MyApp extends StatelessWidget {
       theme: ThemeData.dark(useMaterial3: true).copyWith(
         scaffoldBackgroundColor: const Color(0xFF121212),
         cardColor: const Color(0xFF1E1E1E),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF1E1E1E),
-          foregroundColor: Colors.white,
-          elevation: 0,
-        ),
-        colorScheme: const ColorScheme.dark(
-          primary: Colors.blueAccent,
-          secondary: Colors.orangeAccent,
-          surface: Color(0xFF1E1E1E),
-        ),
+        appBarTheme: const AppBarTheme(backgroundColor: Color(0xFF1E1E1E), foregroundColor: Colors.white, elevation: 0),
+        colorScheme: const ColorScheme.dark(primary: Colors.blueAccent, secondary: Colors.orangeAccent, surface: Color(0xFF1E1E1E)),
       ),
       home: const PantallaPrincipal(),
     );
@@ -54,35 +41,29 @@ class PantallaPrincipal extends StatefulWidget {
 }
 
 class _PantallaPrincipalState extends State<PantallaPrincipal> {
-  // Bluetooth
   List<BluetoothDevice> _devices = [];
   BluetoothDevice? _dispositivoSeleccionado;
   bool _conectando = false;
 
-  // --- HISTORIALES GRÁFICOS ---
   List<List<FlSpot>> _historialTemps = List.generate(7, (_) => []);
-  // ESTA ES LA LISTA CLAVE PARA LAS PRESIONES (ANTES FALTABA)
   List<List<FlSpot>> _historialPresionesSistema = List.generate(7, (_) => []);
-
   List<FlSpot> _historialPresionAtm = [];
   List<FlSpot> _historialHumedad = [];
   List<FlSpot> _historialTempAmb = [];
   List<FlSpot> _historialPotencia = [];
 
-  // --- MEMORIA ---
   List<String> _datosPersistentes = List.filled(24, "0.00");
   List<List<String>> _baseDeDatosLocal = [];
 
   double _tiempo = 0;
-  Timer? _timerDemo;
   String _buffer = "";
+  String _debugVisual = "Esperando..."; // Caja negra
 
   final Map<String, int> _mapaLetras = {
+    // 'a' la trataremos especial, pero la dejamos aqui por si acaso
     'a': 0, 'b': 1, 'c': 2, 'd': 3, 'e': 4, 'f': 5, 'g': 6,
-    'h': 7, 'i': 8, 'j': 9,
-    'k': 10, 'l': 11, 'm': 12, 'n': 13, 'o': 14, 'p': 15, 'q': 16,
-    'r': 17, 's': 18, 't': 19, 'u': 20,
-    'v': 21, 'w': 22, 'x': 23
+    'h': 7, 'i': 8, 'j': 9, 'k': 10, 'l': 11, 'm': 12, 'n': 13, 'o': 14, 'p': 15, 'q': 16,
+    'r': 17, 's': 18, 't': 19, 'u': 20, 'v': 21, 'w': 22, 'x': 23
   };
 
   @override
@@ -101,38 +82,68 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
           mensajeParcial = data.join("");
         }
 
+        // Limpieza básica
+        mensajeParcial = mensajeParcial.replaceAll(RegExp(r'[\r\n]'), '');
         _buffer += mensajeParcial;
-        if (_buffer.contains(RegExp(r'[a-x]'))) {
-          _procesarBufferInteligente();
+
+        // Visualizar en pantalla
+        setState(() {
+          int start = _buffer.length > 50 ? _buffer.length - 50 : 0;
+          _debugVisual = _buffer.substring(start);
+        });
+
+        if (_buffer.isNotEmpty) {
+          _procesarConAnclaB();
         }
-        // Limpieza de seguridad del buffer
-        if (_buffer.length > 2000) _buffer = "";
+
+        if (_buffer.length > 2000) {
+          _buffer = _buffer.substring(_buffer.length - 1000);
+        }
+
       } catch (e) {
-        print("Error recepción: $e");
+        setState(() => _debugVisual = "Error: $e");
       }
     });
   }
 
-  void _procesarBufferInteligente() {
+  void _procesarConAnclaB() {
     if (!mounted) return;
-
-    RegExp regex = RegExp(r'([a-x])([0-9]+\.?[0-9]*)');
-    Iterable<RegExpMatch> matches = regex.allMatches(_buffer);
-
-    if (matches.isEmpty) return;
-
     bool huboCambios = false;
 
+    // --- 1. LÓGICA ESPECIAL PARA EL HERVIDOR (ANCLA 'B') ---
+    // Buscamos: Un número decimal (con punto), espacios opcionales, y luego la letra 'b'.
+    // Esto captura lo que está justo ANTES de la b.
+    RegExp regexHervidor = RegExp(r'([0-9]+\.[0-9]+)\s*[bB]');
+
+    Iterable<RegExpMatch> matchesHervidor = regexHervidor.allMatches(_buffer);
+
+    // Si encontramos algo antes de una 'b', tomamos el último hallazgo (el más reciente)
+    if (matchesHervidor.isNotEmpty) {
+      String valorStr = matchesHervidor.last.group(1)!; // El grupo 1 es el número
+      double val = double.tryParse(valorStr) ?? 0.0;
+
+      // Filtro de realidad: Si es > 200 o < 0, probablemente sea error de lectura
+      if (val > 0 && val < 200) {
+        _datosPersistentes[0] = val.toStringAsFixed(2);
+        huboCambios = true;
+      }
+    }
+
+    // --- 2. LÓGICA ESTÁNDAR PARA EL RESTO (b ... x) ---
+    // Aquí sí buscamos "Letra + Numero", pero ignoramos la 'a' porque ya la leímos arriba
+    RegExp regexGeneral = RegExp(r'([b-xB-X])\s*([0-9]+[\.,]?[0-9]*)');
+    Iterable<RegExpMatch> matches = regexGeneral.allMatches(_buffer);
+
     for (final match in matches) {
-      String letra = match.group(1)!;
-      String valorStr = match.group(2)!;
+      String letra = match.group(1)!.toLowerCase();
+      String valStr = match.group(2)!.replaceAll(',', '.');
       int? index = _mapaLetras[letra];
 
       if (index != null) {
-        double valor = double.tryParse(valorStr) ?? 0.0;
+        double valor = double.tryParse(valStr) ?? 0.0;
 
-        // Conversión Pascales a Psi (Indices 9 a 16)
-        if (index >= 9 && index <= 16) {
+        // Conversión Psi (k-q)
+        if (index >= 10 && index <= 16) {
           if (valor > 50000) valor = valor / 6894.76;
         }
 
@@ -143,175 +154,89 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
 
     if (huboCambios) {
       _actualizarGraficasYExcel();
-      _buffer = "";
       if (_conectando) setState(() { _conectando = false; });
     }
   }
 
   void _actualizarGraficasYExcel() {
-    DateTime ahora = DateTime.now();
-    String horaTexto = "${ahora.hour}:${ahora.minute}:${ahora.second}";
-    _baseDeDatosLocal.add([horaTexto, ..._datosPersistentes]);
-
+    DateTime now = DateTime.now();
+    _baseDeDatosLocal.add(["${now.hour}:${now.minute}:${now.second}", ..._datosPersistentes]);
     setState(() {
       _tiempo++;
-      try {
-        // Temps
-        for (int i = 0; i < 7; i++) {
-          double val = double.parse(_datosPersistentes[i]);
-          if (val > 250 || val < -50) val = _historialTemps[i].isNotEmpty ? _historialTemps[i].last.y : 0.0;
-          _historialTemps[i].add(FlSpot(_tiempo, val));
-          _limpiarHistorial(_historialTemps[i]);
-        }
-
-        // Humedad
-        double valHum = double.parse(_datosPersistentes[7]);
-        if (valHum > 100) valHum = _historialHumedad.isNotEmpty ? _historialHumedad.last.y : 0.0;
-        _historialHumedad.add(FlSpot(_tiempo, valHum));
-        _limpiarHistorial(_historialHumedad);
-
-        // Temp Amb
-        double valTempAmb = double.parse(_datosPersistentes[8]);
-        _historialTempAmb.add(FlSpot(_tiempo, valTempAmb));
-        _limpiarHistorial(_historialTempAmb);
-
-        // Presión Atm
-        double valPresAtm = double.parse(_datosPersistentes[9]);
-        _historialPresionAtm.add(FlSpot(_tiempo, valPresAtm));
-        _limpiarHistorial(_historialPresionAtm);
-
-        // Presiones Sistema (k-q)
-        for (int i = 0; i < 7; i++) {
-          // El índice en _datosPersistentes empieza en 10 (letra k)
-          double val = double.parse(_datosPersistentes[10 + i]);
-          _historialPresionesSistema[i].add(FlSpot(_tiempo, val));
-          _limpiarHistorial(_historialPresionesSistema[i]);
-        }
-
-        // Potencia
-        double valPot = double.parse(_datosPersistentes[23]);
-        if (valPot > 5000) valPot = _historialPotencia.isNotEmpty ? _historialPotencia.last.y : 0.0;
-        _historialPotencia.add(FlSpot(_tiempo, valPot));
-        _limpiarHistorial(_historialPotencia);
-
-      } catch (e) {
-        print("Error graficando: $e");
+      for (int i = 0; i < 7; i++) {
+        _add(_historialTemps[i], double.parse(_datosPersistentes[i]), max: 250);
+        _add(_historialPresionesSistema[i], double.parse(_datosPersistentes[10+i]));
       }
+      _add(_historialHumedad, double.parse(_datosPersistentes[7]), max: 100);
+      _add(_historialTempAmb, double.parse(_datosPersistentes[8]));
+      _add(_historialPresionAtm, double.parse(_datosPersistentes[9]));
+      _add(_historialPotencia, double.parse(_datosPersistentes[23]), max: 5000);
     });
   }
 
-  void _limpiarHistorial(List<FlSpot> lista) {
+  void _add(List<FlSpot> lista, double val, {double max = 99999}) {
+    if (val > max) val = lista.isNotEmpty ? lista.last.y : 0.0;
+    lista.add(FlSpot(_tiempo, val));
     if (lista.length > 60) {
       lista.removeAt(0);
-      for (var i = 0; i < lista.length; i++) {
-        lista[i] = FlSpot(i.toDouble(), lista[i].y);
-      }
+      for (var i = 0; i < lista.length; i++) lista[i] = FlSpot(i.toDouble(), lista[i].y);
     }
   }
 
-  Future<void> _pedirPermisos() async {
-    await [Permission.bluetooth, Permission.bluetoothScan, Permission.bluetoothConnect, Permission.location].request();
-    _escanearDispositivos();
-  }
+  Future<void> _pedirPermisos() async { await [Permission.bluetoothScan, Permission.bluetoothConnect, Permission.location].request(); _scan(); }
+  Future<void> _scan() async { try { var d = await FlutterBluetoothSerial.instance.getBondedDevices(); setState(() { _devices = d; }); } catch(e){} }
+  Future<void> _conectar(BluetoothDevice d) async { setState(() { _conectando = true; _tiempo = 0; _limpiar(); }); bool ok = await MonitorService().conectarDispositivo(d); setState(() { _conectando = false; if(ok) _dispositivoSeleccionado = d; }); }
+  void _limpiar() { for(var l in _historialTemps) l.clear(); for(var l in _historialPresionesSistema) l.clear(); _historialPresionAtm.clear(); _historialHumedad.clear(); _historialTempAmb.clear(); _historialPotencia.clear(); }
+  void _detener() { MonitorService().desconectar(); setState(() { _dispositivoSeleccionado = null; _limpiar(); }); }
 
-  Future<void> _escanearDispositivos() async {
-    try {
-      List<BluetoothDevice> devs = await FlutterBluetoothSerial.instance.getBondedDevices();
-      setState(() { _devices = devs; });
-    } catch (e) { print("Error escaneo: $e"); }
-  }
-
-  Future<void> _conectar(BluetoothDevice device) async {
-    setState(() {
-      _conectando = true;
-      _tiempo = 0;
-      _limpiarTodosLosHistoriales();
-      _datosPersistentes = List.filled(24, "0.00");
-      _buffer = "";
-    });
-    bool exito = await MonitorService().conectarDispositivo(device);
-    setState(() {
-      _conectando = false;
-      if (exito) _dispositivoSeleccionado = device;
+  // SIMULADOR ACTUALIZADO PARA PROBAR TU CASO
+  // Enviamos "20.5b" sin la 'a' para probar que la lógica funciona
+  void _demo() {
+    setState(() { _dispositivoSeleccionado = const BluetoothDevice(address: '00', name: 'SIMULADOR'); _limpiar(); });
+    Timer.periodic(const Duration(milliseconds: 500), (t) {
+      // Enviamos el dato del hervidor (20.5) pegado a la 'b', a veces sin la 'a'
+      _buffer += " 20.5b21.0c22.0d23.0e24.0f25.0g26.0h45.0i25.0j101300k10.0l11.0m12.0n13.0o14.0p15.0q16.0v110.0w1.5x150.0";
+      _procesarConAnclaB();
     });
   }
 
-  void _iniciarSimulacion() {
-    setState(() {
-      _conectando = true;
-      _dispositivoSeleccionado = const BluetoothDevice(address: '00:00', name: 'SIMULADOR');
-      _limpiarTodosLosHistoriales();
-      _tiempo = 0;
-      _datosPersistentes = List.filled(24, "0.00");
-    });
-    _timerDemo = Timer.periodic(const Duration(milliseconds: 500), (timer) {
-      final r = Random();
-      String sim = "";
-      for(int i=0; i<7; i++) sim += "${String.fromCharCode(97+i)}${(20 + r.nextDouble()*15).toStringAsFixed(1)}";
-      sim += "h${(40 + r.nextDouble()*20).toStringAsFixed(1)}";
-      sim += "i${(25 + r.nextDouble()*5).toStringAsFixed(1)}";
-      sim += "j${(101300 + r.nextDouble()*500).toStringAsFixed(0)}";
-      for(int i=0; i<7; i++) sim += "${String.fromCharCode(107+i)}${(0.5 + r.nextDouble()*2).toStringAsFixed(2)}";
-      sim += "v1.5w110.0x${(150 + r.nextDouble()*50).toStringAsFixed(1)}";
-      _buffer += sim;
-      _procesarBufferInteligente();
-    });
-  }
-
-  void _detenerTodo() {
-    if (_timerDemo != null && _timerDemo!.isActive) _timerDemo?.cancel();
-    MonitorService().desconectar();
-    setState(() {
-      _dispositivoSeleccionado = null;
-      _conectando = false;
-      _limpiarTodosLosHistoriales();
-      _buffer = "";
-    });
-  }
-
-  void _limpiarTodosLosHistoriales(){
-    for(var lista in _historialTemps) lista.clear();
-    for(var lista in _historialPresionesSistema) lista.clear();
-    _historialPresionAtm.clear();
-    _historialHumedad.clear();
-    _historialTempAmb.clear();
-    _historialPotencia.clear();
-  }
-
-  Future<void> _exportarYCompartir() async {
-    if (_baseDeDatosLocal.isEmpty) return;
-    bool exito = await ExcelService().exportarDatos(_baseDeDatosLocal);
-    if (!exito) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Error al generar")));
-  }
-
-  // --- AQUÍ ESTÁ LA FUNCIÓN BUILD QUE FALTABA ---
-  // Esta función es la que dibuja la pantalla. Sin ella, sale el error rojo.
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
-      appBar: _dispositivoSeleccionado == null
-          ? AppBar(title: const Text("Monitor de Fluidos"))
-          : null,
-      body: _dispositivoSeleccionado == null
-          ? VistaConexion(
-        devices: _devices,
-        conectando: _conectando,
-        onConectar: _conectar,
-        onDemo: _iniciarSimulacion,
-      )
-          : VistaMonitor(
-        nombreDispositivo: _dispositivoSeleccionado!.name ?? "Dispositivo",
-        datosRaw: _datosPersistentes,
-        historialTemps: _historialTemps,
-        // Aquí pasamos la lista de presiones que declaramos arriba
-        historialPresionesSistema: _historialPresionesSistema,
-        historialPresionAtm: _historialPresionAtm,
-        historialHumedad: _historialHumedad,
-        historialTempAmb: _historialTempAmb,
-        historialPotencia: _historialPotencia,
-        onDesconectar: _detenerTodo,
-        onExportar: _exportarYCompartir,
+      appBar: _dispositivoSeleccionado == null ? AppBar(title: const Text("Monitor de Fluidos")) : null,
+      body: Stack(
+        children: [
+          _dispositivoSeleccionado == null
+              ? VistaConexion(devices: _devices, conectando: _conectando, onConectar: _conectar, onDemo: _demo)
+              : VistaMonitor(
+            nombreDispositivo: _dispositivoSeleccionado!.name ?? "Dispositivo",
+            datosRaw: _datosPersistentes,
+            historialTemps: _historialTemps,
+            historialPresionesSistema: _historialPresionesSistema,
+            historialPresionAtm: _historialPresionAtm,
+            historialHumedad: _historialHumedad,
+            historialTempAmb: _historialTempAmb,
+            historialPotencia: _historialPotencia,
+            onDesconectar: _detener,
+            onExportar: () => ExcelService().exportarDatos(_baseDeDatosLocal),
+          ),
+
+          if (_dispositivoSeleccionado != null)
+            Positioned(
+              bottom: 0, left: 0, right: 0,
+              child: Container(
+                color: Colors.black.withOpacity(0.9),
+                padding: const EdgeInsets.all(8),
+                height: 45,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  "ENTRADA: $_debugVisual",
+                  style: const TextStyle(color: Colors.greenAccent, fontSize: 13, fontFamily: 'monospace'),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

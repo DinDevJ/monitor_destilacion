@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'sensor_chart.dart';
-import 'sensor_chart_multi.dart'; // <--- Este import ahora leerá el archivo corregido
+import 'sensor_chart_multi.dart';
 import 'pantalla_detalle.dart';
 
 class VistaMonitor extends StatefulWidget {
@@ -36,12 +36,17 @@ class VistaMonitor extends StatefulWidget {
 
 class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMixin {
   late TabController _tabController;
-  int _sensorAmbienteSeleccionado = 0;
+  int _tempSeleccionada = -1;
+  int _presionSeleccionada = -1;
+  int _ambienteSeleccionado = 0;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    _tabController.addListener(() {
+      if(!_tabController.indexIsChanging) setState(() {});
+    });
   }
 
   String _getDato(int index) => (index < widget.datosRaw.length) ? widget.datosRaw[index] : "--";
@@ -49,109 +54,316 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
   @override
   Widget build(BuildContext context) {
     bool esHorizontal = MediaQuery.of(context).orientation == Orientation.landscape;
+
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
-      body: SafeArea(child: esHorizontal ? _buildVistaHorizontal() : _buildVistaVertical()),
+      body: SafeArea(
+        child: esHorizontal ? _buildVistaHorizontal() : _buildVistaVertical(),
+      ),
     );
   }
 
   Widget _buildVistaVertical() {
-    return Column(children: [
-      _header(),
-      Expanded(flex: 4, child: Container(color: const Color(0xFF1E1E1E), child: _graficas())),
-      const Divider(color: Colors.white24, height: 1),
-      Expanded(flex: 6, child: ListView(padding: const EdgeInsets.all(12), children: _detalles())),
-    ]);
+    return Column(
+      children: [
+        _buildHeaderCompacto(),
+        Expanded(
+          flex: 4,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(0, 10, 10, 0),
+            color: const Color(0xFF1E1E1E),
+            child: AnimatedBuilder(
+                animation: _tabController,
+                builder: (ctx, _) => _buildGraficaInteligente()
+            ),
+          ),
+        ),
+        Container(
+          color: const Color(0xFF1E1E1E),
+          child: TabBar(
+            controller: _tabController,
+            labelColor: Colors.blueAccent,
+            unselectedLabelColor: Colors.grey,
+            indicatorColor: Colors.blueAccent,
+            dividerColor: Colors.transparent,
+            tabs: const [
+              Tab(icon: Icon(Icons.thermostat), text: "Temp"),
+              Tab(icon: Icon(Icons.speed), text: "Pres"),
+              Tab(icon: Icon(Icons.cloud), text: "Amb"),
+              Tab(icon: Icon(Icons.flash_on), text: "Elec"),
+            ],
+          ),
+        ),
+        Expanded(
+          flex: 6,
+          child: AnimatedBuilder(
+            animation: _tabController,
+            builder: (ctx, _) => ListView(
+              padding: const EdgeInsets.all(12),
+              children: _buildDatosDePestana(_tabController.index),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _buildVistaHorizontal() {
-    return Row(children: [
-      Expanded(flex: 6, child: Container(padding: const EdgeInsets.all(10), color: const Color(0xFF121212), child: _graficas())),
-      const VerticalDivider(width: 1, color: Colors.white24),
-      Expanded(flex: 4, child: Column(children: [
-        _header(),
-        TabBar(controller: _tabController, labelColor: Colors.blueAccent, unselectedLabelColor: Colors.grey, indicatorColor: Colors.blueAccent, dividerColor: Colors.transparent,
-            tabs: const [Tab(icon: Icon(Icons.thermostat)), Tab(icon: Icon(Icons.speed)), Tab(icon: Icon(Icons.cloud)), Tab(icon: Icon(Icons.flash_on))]),
-        Expanded(child: AnimatedBuilder(animation: _tabController, builder: (ctx, _) => ListView(padding: const EdgeInsets.all(12), children: _tabs(_tabController.index)))),
-      ])),
-    ]);
+    return Row(
+      children: [
+        Expanded(
+          flex: 6,
+          child: Container(
+            padding: const EdgeInsets.all(10),
+            color: const Color(0xFF121212),
+            child: AnimatedBuilder(
+                animation: _tabController,
+                builder: (ctx, _) => _buildGraficaInteligente()
+            ),
+          ),
+        ),
+        const VerticalDivider(width: 1, color: Colors.white24),
+        Expanded(
+          flex: 4,
+          child: Column(
+            children: [
+              _buildHeaderCompacto(),
+              Container(
+                color: const Color(0xFF1E1E1E),
+                child: TabBar(
+                  controller: _tabController,
+                  labelColor: Colors.blueAccent,
+                  unselectedLabelColor: Colors.grey,
+                  indicatorColor: Colors.blueAccent,
+                  dividerColor: Colors.transparent,
+                  tabs: const [
+                    Tab(icon: Icon(Icons.thermostat), text: "Temp"),
+                    Tab(icon: Icon(Icons.speed), text: "Pres"),
+                    Tab(icon: Icon(Icons.cloud), text: "Amb"),
+                    Tab(icon: Icon(Icons.flash_on), text: "Elec"),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Container(
+                  color: const Color(0xFF1E1E1E),
+                  child: AnimatedBuilder(
+                    animation: _tabController,
+                    builder: (ctx, _) => ListView(
+                      padding: const EdgeInsets.all(12),
+                      children: _buildDatosDePestana(_tabController.index),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 
-  Widget _header() {
-    return Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), color: const Color(0xFF1E1E1E), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-      Row(children: [const Icon(Icons.bluetooth_connected, color: Colors.blueAccent, size: 16), const SizedBox(width: 8), Text(widget.nombreDispositivo, style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.bold))]),
-      Row(children: [IconButton(icon: const Icon(Icons.save_alt, color: Colors.greenAccent), onPressed: widget.onExportar), IconButton(icon: const Icon(Icons.power_settings_new, color: Colors.redAccent), onPressed: widget.onDesconectar)])
-    ]));
-  }
-
-  Widget _graficas() {
-    bool hor = MediaQuery.of(context).orientation == Orientation.landscape;
-    return Column(children: [
-      if (!hor) TabBar(controller: _tabController, isScrollable: true, labelColor: Colors.blueAccent, unselectedLabelColor: Colors.grey, indicatorColor: Colors.blueAccent, dividerColor: Colors.transparent, tabs: const [Tab(text: "Temperaturas"), Tab(text: "Presiones"), Tab(text: "Ambiente"), Tab(text: "Eléctrico")]),
-      Expanded(child: AnimatedBuilder(animation: Listenable.merge([_tabController]), builder: (ctx, _) => _chartLogic())),
-    ]);
-  }
-
-  Widget _chartLogic() {
-    // ESTO YA NO DARÁ ERROR PORQUE EL PASO 1 ARREGLÓ "SensorChartMulti"
+  Widget _buildGraficaInteligente() {
     switch (_tabController.index) {
-      case 0: return _pad(SensorChartMulti(lineas: widget.historialTemps, minY: 0, maxY: 200, intervalY: 20, unidadTooltip: "°C"));
-      case 1: return _pad(SensorChartMulti(lineas: widget.historialPresionesSistema, minY: 0, maxY: 60, intervalY: 10, unidadTooltip: "Psi"));
+      case 0:
+        return SensorChartMulti(lineas: widget.historialTemps, lineaSeleccionada: _tempSeleccionada, minY: 0, maxY: 200, intervalY: 25, unidadTooltip: "°C");
+      case 1:
+        return SensorChartMulti(lineas: widget.historialPresionesSistema, lineaSeleccionada: _presionSeleccionada, minY: 0, maxY: 60, intervalY: 10, unidadTooltip: "Psi");
       case 2:
-        if(_sensorAmbienteSeleccionado == 0) return _pad(SensorChart(puntos: widget.historialTempAmb, colorLinea: Colors.green, minY: 0, maxY: 50));
-        if(_sensorAmbienteSeleccionado == 1) return _pad(SensorChart(puntos: widget.historialHumedad, colorLinea: Colors.lightBlue, minY: 0, maxY: 100));
-        return _pad(SensorChart(puntos: widget.historialPresionAtm, colorLinea: Colors.blueGrey, minY: 80000, maxY: 110000));
-      case 3: return _pad(SensorChart(puntos: widget.historialPotencia, colorLinea: Colors.purpleAccent, minY: 0, maxY: 2000));
+        if (_ambienteSeleccionado == 0) return SensorChart(puntos: widget.historialTempAmb, colorLinea: Colors.green, minY: 0, maxY: 50, intervalY: 5);
+        if (_ambienteSeleccionado == 1) return SensorChart(puntos: widget.historialHumedad, colorLinea: Colors.lightBlue, minY: 0, maxY: 100, intervalY: 20);
+        return SensorChart(puntos: widget.historialPresionAtm, colorLinea: Colors.blueGrey, minY: 0, maxY: 100);
+      case 3:
+        return SensorChart(puntos: widget.historialPotencia, colorLinea: Colors.purpleAccent, minY: 0, maxY: 2000, intervalY: 250);
       default: return const SizedBox();
     }
   }
 
-  Widget _pad(Widget w) => Padding(padding: const EdgeInsets.fromLTRB(5, 10, 20, 0), child: w);
-
-  List<Widget> _detalles() => [..._bTemps(), ..._bPres(), ..._bElec(), ..._bAmb()];
-  List<Widget> _tabs(int i) { if(i==0)return _bTemps(); if(i==1)return _bPres(); if(i==2)return _bAmb(); if(i==3)return _bElec(); return []; }
-
-  List<Widget> _bTemps() {
-    return [_tit("Temperaturas de Proceso", Colors.orangeAccent), GridView.count(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), crossAxisCount: 2, childAspectRatio: 2.5, mainAxisSpacing: 8, crossAxisSpacing: 8, children: [
-      _card("S1", _getDato(0), "°C", Colors.orange, widget.historialTemps[0], graf: SensorChartMulti.coloresFijos[0]),
-      _card("S2", _getDato(1), "°C", Colors.orange, widget.historialTemps[1], graf: SensorChartMulti.coloresFijos[1]),
-      _card("S3", _getDato(2), "°C", Colors.orange, widget.historialTemps[2], graf: SensorChartMulti.coloresFijos[2]),
-      _card("S4", _getDato(3), "°C", Colors.orange, widget.historialTemps[3], graf: SensorChartMulti.coloresFijos[3]),
-      _card("S5", _getDato(4), "°C", Colors.orange, widget.historialTemps[4], graf: SensorChartMulti.coloresFijos[4]),
-      _card("S6", _getDato(5), "°C", Colors.orange, widget.historialTemps[5], graf: SensorChartMulti.coloresFijos[5]),
-      _card("S7", _getDato(6), "°C", Colors.orange, widget.historialTemps[6], graf: SensorChartMulti.coloresFijos[6]),
-    ])];
+  List<Widget> _buildDatosDePestana(int index) {
+    switch (index) {
+      case 0: return _buildGridTemperaturas();
+      case 1: return _buildGridPresiones();
+      case 2: return _buildListaAmbiente();
+      case 3: return _buildListaElectrico();
+      default: return [];
+    }
   }
 
-  List<Widget> _bPres() {
-    return [_tit("Presiones (Psi)", Colors.blueAccent), GridView.count(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), crossAxisCount: 2, childAspectRatio: 2.5, mainAxisSpacing: 8, crossAxisSpacing: 8, children: [
-      _card("Hervidor", _getDato(10), "Psi", Colors.blue, widget.historialPresionesSistema[0], graf: SensorChartMulti.coloresFijos[0]),
-      _card("S2", _getDato(11), "Psi", Colors.blue, widget.historialPresionesSistema[1], graf: SensorChartMulti.coloresFijos[1]),
-      _card("S3", _getDato(12), "Psi", Colors.blue, widget.historialPresionesSistema[2], graf: SensorChartMulti.coloresFijos[2]),
-      _card("S4", _getDato(13), "Psi", Colors.blue, widget.historialPresionesSistema[3], graf: SensorChartMulti.coloresFijos[3]),
-      _card("S5", _getDato(14), "Psi", Colors.blue, widget.historialPresionesSistema[4], graf: SensorChartMulti.coloresFijos[4]),
-      _card("S6", _getDato(15), "Psi", Colors.blue, widget.historialPresionesSistema[5], graf: SensorChartMulti.coloresFijos[5]),
-      _card("S7", _getDato(16), "Psi", Colors.blue, widget.historialPresionesSistema[6], graf: SensorChartMulti.coloresFijos[6]),
-    ])];
-  }
-
-  List<Widget> _bAmb() {
-    return [_tit("Ambiente", Colors.greenAccent),
-      _inter(0, "Temp. Amb", _getDato(8), "°C", Colors.green), const SizedBox(height: 8),
-      _inter(1, "Humedad", _getDato(7), "%", Colors.lightBlue), const SizedBox(height: 8),
-      _inter(2, "Presión Atm", _getDato(9), "Pa", Colors.blueGrey), const SizedBox(height: 20),
-      if(_getDato(17)=="1" || _getDato(18)=="1" || _getDato(19)=="1" || _getDato(20)=="1") _tit("ALERTAS", Colors.red),
-      if(_getDato(17)=="1") _alert("Falla Sensor"), if(_getDato(18)=="1") _alert("Falla Reflujo"),
+  List<Widget> _buildGridTemperaturas() {
+    final cols = SensorChartMulti.coloresFijos;
+    return [
+      _btnResetSelection(() => setState(() => _tempSeleccionada = -1), "Ver Todas las Temperaturas"),
+      const SizedBox(height: 10),
+      GridView.count(
+        shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+        crossAxisCount: 2,
+        childAspectRatio: 2.0, // <-- ARREGLADO
+        mainAxisSpacing: 8, crossAxisSpacing: 8,
+        children: [
+          _cardSelectable(0, "Hervidor", _getDato(0), "°C", Colors.orange, cols[0], _tempSeleccionada, (i) => setState(() => _tempSeleccionada = i)),
+          _cardSelectable(1, "Plato 2", _getDato(1), "°C", Colors.orange, cols[1], _tempSeleccionada, (i) => setState(() => _tempSeleccionada = i)),
+          _cardSelectable(2, "Plato 4", _getDato(2), "°C", Colors.orange, cols[2], _tempSeleccionada, (i) => setState(() => _tempSeleccionada = i)),
+          _cardSelectable(3, "Plato 6", _getDato(3), "°C", Colors.orange, cols[3], _tempSeleccionada, (i) => setState(() => _tempSeleccionada = i)),
+          _cardSelectable(4, "Plato 8", _getDato(4), "°C", Colors.orange, cols[4], _tempSeleccionada, (i) => setState(() => _tempSeleccionada = i)),
+          _cardSelectable(5, "Plato 10", _getDato(5), "°C", Colors.orange, cols[5], _tempSeleccionada, (i) => setState(() => _tempSeleccionada = i)),
+          _cardSelectable(6, "Condensador", _getDato(6), "°C", Colors.orange, cols[6], _tempSeleccionada, (i) => setState(() => _tempSeleccionada = i)),
+        ],
+      )
     ];
   }
 
-  List<Widget> _bElec() {
-    return [_tit("Eléctrico", Colors.purpleAccent), Row(children: [Expanded(child: _mini("Voltaje", _getDato(22), "V", Colors.yellowAccent)), const SizedBox(width: 5), Expanded(child: _mini("Corriente", _getDato(21), "A", Colors.blueAccent))]), const SizedBox(height: 10), _card("Potencia", _getDato(23), "W", Colors.purpleAccent, widget.historialPotencia)];
+  List<Widget> _buildGridPresiones() {
+    final cols = SensorChartMulti.coloresFijos;
+    return [
+      _btnResetSelection(() => setState(() => _presionSeleccionada = -1), "Ver Todas las Presiones"),
+      const SizedBox(height: 10),
+      GridView.count(
+        shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+        crossAxisCount: 2,
+        childAspectRatio: 2.0, // <-- ARREGLADO
+        mainAxisSpacing: 8, crossAxisSpacing: 8,
+        children: [
+          _cardSelectable(0, "Hervidor", _getDato(10), "Psi", Colors.blue, cols[0], _presionSeleccionada, (i) => setState(() => _presionSeleccionada = i)),
+          _cardSelectable(1, "S2", _getDato(11), "Psi", Colors.blue, cols[1], _presionSeleccionada, (i) => setState(() => _presionSeleccionada = i)),
+          _cardSelectable(2, "S3", _getDato(12), "Psi", Colors.blue, cols[2], _presionSeleccionada, (i) => setState(() => _presionSeleccionada = i)),
+          _cardSelectable(3, "S4", _getDato(13), "Psi", Colors.blue, cols[3], _presionSeleccionada, (i) => setState(() => _presionSeleccionada = i)),
+          _cardSelectable(4, "S5", _getDato(14), "Psi", Colors.blue, cols[4], _presionSeleccionada, (i) => setState(() => _presionSeleccionada = i)),
+          _cardSelectable(5, "S6", _getDato(15), "Psi", Colors.blue, cols[5], _presionSeleccionada, (i) => setState(() => _presionSeleccionada = i)),
+          _cardSelectable(6, "S7", _getDato(16), "Psi", Colors.blue, cols[6], _presionSeleccionada, (i) => setState(() => _presionSeleccionada = i)),
+        ],
+      )
+    ];
   }
 
-  Widget _tit(String t, Color c) => Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Text(t, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: c)));
-  Widget _card(String t, String v, String u, Color c, List<FlSpot> h, {Color? graf}) => GestureDetector(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PantallaDetalle(titulo: t, valorActual: v, unidad: u, historial: h, colorTema: c))), child: Container(decoration: BoxDecoration(color: const Color(0xFF1E1E1E), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.white12)), padding: const EdgeInsets.all(8), child: Row(children: [graf!=null?Container(width:10,height:10,decoration:BoxDecoration(color:graf,shape:BoxShape.circle)):Icon(Icons.thermostat,color:c,size:20),const SizedBox(width:8),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisAlignment:MainAxisAlignment.center,children:[Text(t,style:const TextStyle(fontSize:10,color:Colors.white54),overflow:TextOverflow.ellipsis),Text("$v $u",style:TextStyle(fontSize:16,fontWeight:FontWeight.bold,color:c))]))])));
-  Widget _inter(int idx, String t, String v, String u, Color c) { bool sel = _sensorAmbienteSeleccionado == idx && _tabController.index == 2; return InkWell(onTap: (){ setState(() { _sensorAmbienteSeleccionado = idx; if(_tabController.index!=2) _tabController.animateTo(2); }); }, child: Container(decoration: BoxDecoration(color: const Color(0xFF1E1E1E), borderRadius: BorderRadius.circular(10), border: Border.all(color: sel ? c : Colors.white12, width: sel?2:1)), padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12), child: Row(children: [Icon(Icons.touch_app, color: c, size: 20), const SizedBox(width: 10), Expanded(child: Text(t, style: const TextStyle(fontSize: 14, color: Colors.white70))), Text("$v $u", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: c))]))); }
-  Widget _mini(String t, String v, String u, Color c) => Container(decoration: BoxDecoration(color: const Color(0xFF2C2C2C), borderRadius: BorderRadius.circular(8)), padding: const EdgeInsets.all(8), child: Column(children: [Text(t, style: const TextStyle(fontSize: 10, color: Colors.white54)), Text("$v $u", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: c))]));
-  Widget _alert(String m) => Card(color: const Color(0xFF3E1E1E), child: ListTile(leading: const Icon(Icons.warning, color: Colors.redAccent, size: 20), title: Text(m, style: const TextStyle(color: Colors.redAccent, fontSize: 13, fontWeight: FontWeight.bold)), dense: true));
+  List<Widget> _buildListaAmbiente() {
+    return [
+      _cardAmbiente(0, "Temp. Ambiente", _getDato(8), "°C", Colors.green, Icons.thermostat),
+      const SizedBox(height: 8),
+      _cardAmbiente(1, "Humedad", _getDato(7), "%", Colors.lightBlue, Icons.water_drop),
+      const SizedBox(height: 8),
+      _cardAmbiente(2, "Presión Atm", _getDato(9), "Pa", Colors.blueGrey, Icons.speed),
+      const SizedBox(height: 20),
+      if(_hayErrores()) const Text("ALERTAS DEL SISTEMA", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+      if(_getDato(17)=="1") _alerta("Falla Sensor"),
+      if(_getDato(18)=="1") _alerta("Falla Reflujo"),
+    ];
+  }
+
+  List<Widget> _buildListaElectrico() {
+    return [
+      Row(children: [
+        Expanded(child: _miniCard("Voltaje", _getDato(22), "V", Colors.yellowAccent)),
+        const SizedBox(width: 10),
+        Expanded(child: _miniCard("Corriente", _getDato(21), "A", Colors.blueAccent)),
+      ]),
+      const SizedBox(height: 15),
+      Container(
+        padding: const EdgeInsets.all(15),
+        decoration: BoxDecoration(
+          color: const Color(0xFF2C2C2C),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.purpleAccent),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text("Potencia Total", style: TextStyle(color: Colors.white70)),
+            Text("${_getDato(23)} W", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.purpleAccent)),
+          ],
+        ),
+      )
+    ];
+  }
+
+  // --- WIDGETS AUXILIARES ---
+
+  Widget _buildHeaderCompacto() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: const Color(0xFF1E1E1E),
+      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        Row(children: [const Icon(Icons.bluetooth_connected, color: Colors.blueAccent, size: 16), const SizedBox(width: 8), Text(widget.nombreDispositivo, style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.bold))]),
+        Row(children: [IconButton(icon: const Icon(Icons.save_alt, color: Colors.greenAccent), onPressed: widget.onExportar), IconButton(icon: const Icon(Icons.power_settings_new, color: Colors.redAccent), onPressed: widget.onDesconectar)])
+      ]),
+    );
+  }
+
+  Widget _btnResetSelection(VoidCallback onTap, String text) {
+    return TextButton.icon(
+      onPressed: onTap,
+      icon: const Icon(Icons.refresh, size: 16, color: Colors.white54),
+      label: Text(text, style: const TextStyle(color: Colors.white54)),
+      style: TextButton.styleFrom(backgroundColor: const Color(0xFF2C2C2C)),
+    );
+  }
+
+  Widget _cardSelectable(int index, String title, String val, String unit, Color colorText, Color colorDot, int currentSelection, Function(int) onSelect) {
+    bool isSelected = (currentSelection == index);
+    return InkWell(
+      onTap: () => onSelect(index),
+      borderRadius: BorderRadius.circular(10),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        decoration: BoxDecoration(
+          color: isSelected ? colorText.withOpacity(0.1) : const Color(0xFF2C2C2C),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: isSelected ? colorText : Colors.transparent, width: 1.5),
+        ),
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Container(width: 8, height: 8, decoration: BoxDecoration(color: colorDot, shape: BoxShape.circle)),
+              const SizedBox(width: 6),
+              Expanded(child: Text(title, style: const TextStyle(fontSize: 11, color: Colors.white70), overflow: TextOverflow.ellipsis)),
+            ]),
+            const SizedBox(height: 4),
+            Text("$val $unit", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: colorText)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _cardAmbiente(int index, String title, String val, String unit, Color color, IconData icono) {
+    bool isSelected = (_ambienteSeleccionado == index);
+    return InkWell(
+      onTap: () => setState(() => _ambienteSeleccionado = index),
+      child: Container(
+        decoration: BoxDecoration(
+            color: const Color(0xFF2C2C2C),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: isSelected ? color : Colors.transparent, width: 1.5)
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(children: [Icon(icono, size: 24, color: color), const SizedBox(width: 12), Text(title, style: const TextStyle(color: Colors.white70, fontSize: 14))]),
+            Text("$val $unit", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _miniCard(String title, String val, String unit, Color color) {
+    return Container(
+      decoration: BoxDecoration(color: const Color(0xFF2C2C2C), borderRadius: BorderRadius.circular(10)),
+      padding: const EdgeInsets.all(15),
+      child: Column(
+        children: [
+          Text(title, style: const TextStyle(fontSize: 12, color: Colors.white54)),
+          const SizedBox(height: 5),
+          Text("$val $unit", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+        ],
+      ),
+    );
+  }
+
+  Widget _alerta(String msg) => Card(color: const Color(0xFF3E1E1E), child: ListTile(leading: const Icon(Icons.warning, color: Colors.redAccent), title: Text(msg, style: const TextStyle(color: Colors.redAccent))));
+
+  bool _hayErrores() => (_getDato(17)=="1" || _getDato(18)=="1");
 }
