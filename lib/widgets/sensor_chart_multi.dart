@@ -1,75 +1,84 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'dart:math';
 
 class SensorChartMulti extends StatelessWidget {
   final List<List<FlSpot>> lineas;
+  final double? minY;
+  final double? maxY;
+  final double? intervalY;
+  final String unidadTooltip;
 
-  const SensorChartMulti({super.key, required this.lineas});
+  const SensorChartMulti({
+    super.key,
+    required this.lineas,
+    this.minY,
+    this.maxY,
+    this.intervalY,
+    this.unidadTooltip = "",
+  });
 
-  // --- PALETA DE COLORES PÚBLICA ---
   static const List<Color> coloresFijos = [
-    Colors.red,         // Sensor 1
-    Colors.blue,        // Sensor 2
-    Colors.green,       // Sensor 3
-    Colors.orange,      // Sensor 4
-    Colors.purple,      // Sensor 5
-    Colors.teal,        // Sensor 6
-    Colors.pink,        // Sensor 7
+    Colors.redAccent, Colors.blueAccent, Colors.greenAccent, Colors.orangeAccent,
+    Colors.purpleAccent, Colors.tealAccent, Colors.pinkAccent,
   ];
 
   @override
   Widget build(BuildContext context) {
-    double minY = 0;
-    double maxY = 100;
-    List<FlSpot> todosLosPuntos = lineas.expand((l) => l).toList();
-
-    if (todosLosPuntos.isNotEmpty) {
-      double minValor = todosLosPuntos.map((e) => e.y).reduce((a, b) => a < b ? a : b);
-      double maxValor = todosLosPuntos.map((e) => e.y).reduce((a, b) => a > b ? a : b);
-      double diferencia = maxValor - minValor;
-
-      if (diferencia < 5) {
-        double centro = (minValor + maxValor) / 2;
-        minY = centro - 5;
-        maxY = centro + 5;
-      } else {
-        double margen = diferencia * 0.1;
-        minY = minValor - margen;
-        maxY = maxValor + margen;
-      }
+    double maxX = 0;
+    for (var linea in lineas) {
+      if (linea.isNotEmpty) maxX = max(maxX, linea.last.x);
     }
+    if (maxX < 60) maxX = 60;
 
-    // --- AQUÍ AGREGAMOS EL ZOOM ---
-    return ClipRect(
-      child: InteractiveViewer(
-        panEnabled: true,
-        minScale: 1.0,
-        maxScale: 5.0, // Zoom hasta 5x
-        child: LineChart(
-          LineChartData(
-            minY: minY,
-            maxY: maxY,
-            gridData: const FlGridData(show: true, drawVerticalLine: false),
-            titlesData: const FlTitlesData(
-              leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 40)),
-              bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-              topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-              rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            ),
-            borderData: FlBorderData(show: true, border: Border.all(color: Colors.grey.withOpacity(0.3))),
-
-            lineBarsData: List.generate(lineas.length, (index) {
-              Color colorLinea = coloresFijos[index % coloresFijos.length];
-              return LineChartBarData(
-                spots: lineas[index],
-                isCurved: true,
-                color: colorLinea,
-                barWidth: 2,
-                dotData: const FlDotData(show: false),
-              );
-            }),
+    return LineChart(
+      LineChartData(
+        minY: minY,
+        maxY: maxY,
+        minX: maxX - 60,
+        maxX: maxX,
+        lineTouchData: LineTouchData(
+          touchTooltipData: LineTouchTooltipData(
+            tooltipBgColor: Colors.grey[900]!,
+            getTooltipItems: (List<LineBarSpot> touchedBarSpots) {
+              return touchedBarSpots.map((barSpot) {
+                return LineTooltipItem(
+                  '${barSpot.y.toStringAsFixed(1)} $unidadTooltip',
+                  TextStyle(color: barSpot.bar.color, fontWeight: FontWeight.bold, fontSize: 12),
+                );
+              }).toList();
+            },
           ),
         ),
+        gridData: FlGridData(
+          show: true, drawVerticalLine: false,
+          getDrawingHorizontalLine: (value) => FlLine(color: Colors.white12, strokeWidth: 1),
+        ),
+        titlesData: FlTitlesData(
+          bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true, reservedSize: 40, interval: intervalY,
+              getTitlesWidget: (value, meta) {
+                if (intervalY != null || value % 10 == 0) {
+                  return Text(value.toInt().toString(), style: const TextStyle(color: Colors.white54, fontSize: 10));
+                }
+                return const SizedBox();
+              },
+            ),
+          ),
+        ),
+        borderData: FlBorderData(show: true, border: Border.all(color: Colors.white10)),
+        lineBarsData: List.generate(lineas.length, (index) {
+          return LineChartBarData(
+            spots: lineas[index], isCurved: true,
+            color: coloresFijos[index % coloresFijos.length],
+            barWidth: 2, isStrokeCapRound: true, dotData: FlDotData(show: false),
+            belowBarData: BarAreaData(show: false),
+          );
+        }),
       ),
     );
   }

@@ -1,94 +1,73 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'dart:math';
 
 class SensorChart extends StatelessWidget {
   final List<FlSpot> puntos;
   final Color colorLinea;
-  final bool mostrarPuntos;
+
+  // --- VARIABLES NUEVAS PARA LÍMITES ---
+  final double? minY;
+  final double? maxY;
 
   const SensorChart({
     super.key,
     required this.puntos,
-    this.colorLinea = Colors.blue,
-    this.mostrarPuntos = false,
+    required this.colorLinea,
+    this.minY, // Ahora aceptamos minY
+    this.maxY, // Ahora aceptamos maxY
   });
 
   @override
   Widget build(BuildContext context) {
-    // 1. CALCULAR LÍMITES INTELIGENTES (Igual que antes)
-    double minY = 0;
-    double maxY = 100;
-
+    double maxX = 0;
     if (puntos.isNotEmpty) {
-      double minValor = puntos.map((e) => e.y).reduce((a, b) => a < b ? a : b);
-      double maxValor = puntos.map((e) => e.y).reduce((a, b) => a > b ? a : b);
-      double diferencia = maxValor - minValor;
-
-      if (diferencia < 5) {
-        double centro = (minValor + maxValor) / 2;
-        minY = centro - 5;
-        maxY = centro + 5;
-      } else {
-        double margen = diferencia * 0.2;
-        minY = minValor - margen;
-        maxY = maxValor + margen;
-      }
+      maxX = puntos.last.x;
     }
+    if (maxX < 60) maxX = 60;
 
-    // --- AQUÍ EMPIEZA LA MAGIA DEL ZOOM ---
-    return ClipRect( // 1. Corta lo que se salga del recuadro al hacer zoom
-      child: InteractiveViewer( // 2. Permite gestos de pinza y arrastre
-        panEnabled: true, // Permite moverse por la gráfica si está con zoom
-        boundaryMargin: const EdgeInsets.all(0),
-        minScale: 1.0, // No deja hacerla más chica que el original
-        maxScale: 5.0, // Permite hacer zoom hasta 5x
-        child: LineChart(
-          LineChartData(
-            minY: minY,
-            maxY: maxY,
-            gridData: FlGridData(
-              show: true,
-              drawVerticalLine: false,
-              getDrawingHorizontalLine: (value) => FlLine(
-                color: Colors.grey.withOpacity(0.2),
-                strokeWidth: 1,
-              ),
-            ),
-            titlesData: FlTitlesData(
-              leftTitles: AxisTitles(
-                sideTitles: SideTitles(
-                  showTitles: true,
-                  reservedSize: 45,
-                  getTitlesWidget: (value, meta) {
-                    if (value >= 1000) return Text("${(value/1000).toStringAsFixed(1)}k", style: const TextStyle(fontSize: 10));
-                    return Text(value.toStringAsFixed(1), style: const TextStyle(fontSize: 10));
-                  },
-                ),
-              ),
-              bottomTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-              topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-              rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            ),
-            borderData: FlBorderData(
-              show: true,
-              border: Border.all(color: Colors.grey.withOpacity(0.3)),
-            ),
-            lineBarsData: [
-              LineChartBarData(
-                spots: puntos,
-                isCurved: true,
-                color: colorLinea,
-                barWidth: 3,
-                isStrokeCapRound: true,
-                dotData: FlDotData(show: mostrarPuntos),
-                belowBarData: BarAreaData(
-                  show: true,
-                  color: colorLinea.withOpacity(0.1),
-                ),
-              ),
-            ],
+    return LineChart(
+      LineChartData(
+        // USAMOS LOS LÍMITES AQUÍ
+        minY: minY,
+        maxY: maxY,
+        minX: maxX - 60,
+        maxX: maxX,
+
+        lineTouchData: LineTouchData(
+          touchTooltipData: LineTouchTooltipData(
+            tooltipBgColor: Colors.grey[900]!,
+            getTooltipItems: (List<LineBarSpot> touchedBarSpots) {
+              return touchedBarSpots.map((barSpot) {
+                return LineTooltipItem(
+                  barSpot.y.toStringAsFixed(1),
+                  TextStyle(color: barSpot.bar.color, fontWeight: FontWeight.bold),
+                );
+              }).toList();
+            },
           ),
         ),
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          getDrawingHorizontalLine: (value) => FlLine(color: Colors.white12, strokeWidth: 1),
+        ),
+        titlesData: FlTitlesData(show: false), // Sin títulos para la versión mini/simple
+        borderData: FlBorderData(show: true, border: Border.all(color: Colors.white10)),
+        lineBarsData: [
+          LineChartBarData(
+            spots: puntos,
+            isCurved: true,
+            color: colorLinea,
+            barWidth: 3,
+            isStrokeCapRound: true,
+            dotData: FlDotData(show: false),
+            belowBarData: BarAreaData(
+                show: true,
+                color: colorLinea.withOpacity(0.1)
+            ),
+          ),
+        ],
       ),
     );
   }
