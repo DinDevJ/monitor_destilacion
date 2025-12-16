@@ -12,7 +12,15 @@ class ExcelService {
       Sheet sheetObject = excel[nombreHoja];
       excel.setDefaultSheet(nombreHoja);
 
-      // 1. ENCABEZADOS (Tus 24 variables)
+      CellStyle estiloEncabezado = CellStyle(
+        bold: true,
+        horizontalAlign: HorizontalAlign.Center,
+        verticalAlign: VerticalAlign.Center,
+        backgroundColorHex: ExcelColor.fromHexString("#D9D9D9"),
+        fontFamily: getFontFamily(FontFamily.Arial),
+      );
+
+      // --- AGREGAMOS "FOTO" AL FINAL DE LOS ENCABEZADOS ---
       List<String> titulosString = [
         "Hora Lectura",
         "T. HERVIDOR", "T. PLATO 2", "T. PLATO 4", "T. PLATO 6", "T. PLATO 8", "T. PLATO 10", "T. CONDENSADOR",
@@ -20,13 +28,19 @@ class ExcelService {
         "P. HERVIDOR", "P. PLATO 2", "P. PLATO 4", "P. PLATO 6",
         "P. PLATO 8", "P. PLATO 10", "P. CONDENSADOR",
         "Err Sensor", "Err Reflujo", "Err Fuga", "Err Válvula",
-        "Corriente (A)", "Voltaje (V)", "Potencia (W)"
+        "Corriente (A)", "Voltaje (V)", "Potencia (W)",
+        "FOTO" // <--- NUEVA COLUMNA DE SINCRONIZACIÓN
       ];
 
       List<CellValue> filaEncabezados = titulosString.map((e) => TextCellValue(e)).toList();
       sheetObject.appendRow(filaEncabezados);
 
-      // 2. DATOS
+      for (int i = 0; i < titulosString.length; i++) {
+        var cell = sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0));
+        cell.cellStyle = estiloEncabezado;
+        sheetObject.setColumnWidth(i, 18.0);
+      }
+
       for (var fila in datos) {
         List<CellValue> filaExcel = fila.map((dato) {
           double? valorNumerico = double.tryParse(dato);
@@ -39,27 +53,16 @@ class ExcelService {
         sheetObject.appendRow(filaExcel);
       }
 
-      // 3. GENERAR NOMBRE CON FECHA Y HORA
-      // Obtenemos la fecha actual
       DateTime now = DateTime.now();
-
-      // Formateamos manual: AÑO-MES-DIA_HORA-MINUTO (Ej: 2025-10-25_14-30)
-      // Usamos .padLeft(2, '0') para asegurar que "5" se convierta en "05"
       String fecha = "${now.year}-${now.month.toString().padLeft(2,'0')}-${now.day.toString().padLeft(2,'0')}";
       String hora = "${now.hour.toString().padLeft(2,'0')}-${now.minute.toString().padLeft(2,'0')}";
-
       String nombreArchivo = "Reporte_Destilacion_${fecha}_$hora.xlsx";
 
-
-      // 4. GUARDAR Y COMPARTIR
       var fileBytes = excel.save();
 
       if (fileBytes != null) {
         final directory = await getApplicationDocumentsDirectory();
-
-        // Usamos el nombre dinámico aquí
         final String filePath = '${directory.path}/$nombreArchivo';
-
         File file = File(filePath);
         await file.writeAsBytes(fileBytes);
 

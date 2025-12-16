@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 
 class PantallaConfiguracion extends StatefulWidget {
-  // CONFIG 1: Grabación Automática
+  // CONFIG 1: Grabación
   final bool autoGrabar;
   final ValueChanged<bool> onChangedAutoGrabar;
 
-  // CONFIG 2: Terminal (NUEVO)
+  // CONFIG 2: Terminal
   final bool mostrarTerminal;
   final ValueChanged<bool> onChangedMostrarTerminal;
+
+  // CONFIG 3: PRUEBA DE ERRORES (NUEVO)
+  final bool modoPruebaErrores;
+  final ValueChanged<bool> onChangedModoPruebaErrores;
 
   const PantallaConfiguracion({
     super.key,
@@ -15,6 +19,8 @@ class PantallaConfiguracion extends StatefulWidget {
     required this.onChangedAutoGrabar,
     required this.mostrarTerminal,
     required this.onChangedMostrarTerminal,
+    required this.modoPruebaErrores,
+    required this.onChangedModoPruebaErrores,
   });
 
   @override
@@ -24,12 +30,14 @@ class PantallaConfiguracion extends StatefulWidget {
 class _PantallaConfiguracionState extends State<PantallaConfiguracion> {
   late bool _localAutoGrabar;
   late bool _localMostrarTerminal;
+  late bool _localModoPrueba;
 
   @override
   void initState() {
     super.initState();
     _localAutoGrabar = widget.autoGrabar;
     _localMostrarTerminal = widget.mostrarTerminal;
+    _localModoPrueba = widget.modoPruebaErrores;
   }
 
   @override
@@ -44,12 +52,10 @@ class _PantallaConfiguracionState extends State<PantallaConfiguracion> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // SECCIÓN 1: ALMACENAMIENTO
           const Text("ALMACENAMIENTO", style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 12)),
-          const SizedBox(height: 10),
           SwitchListTile(
             title: const Text("Grabación Automática", style: TextStyle(color: Colors.white)),
-            subtitle: const Text("Guardar datos automáticamente al conectar.", style: TextStyle(color: Colors.white54, fontSize: 12)),
+            subtitle: const Text("Guardar datos al conectar.", style: TextStyle(color: Colors.white54, fontSize: 12)),
             activeColor: Colors.greenAccent,
             value: _localAutoGrabar,
             onChanged: (val) {
@@ -61,18 +67,28 @@ class _PantallaConfiguracionState extends State<PantallaConfiguracion> {
 
           const Divider(color: Colors.white24, height: 30),
 
-          // SECCIÓN 2: HERRAMIENTAS (NUEVO)
           const Text("HERRAMIENTAS", style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 12)),
-          const SizedBox(height: 10),
           SwitchListTile(
             title: const Text("Terminal de Datos", style: TextStyle(color: Colors.white)),
-            subtitle: const Text("Muestra una caja con los datos crudos recibidos (útil para detectar errores).", style: TextStyle(color: Colors.white54, fontSize: 12)),
+            subtitle: const Text("Ver datos crudos en pantalla.", style: TextStyle(color: Colors.white54, fontSize: 12)),
             activeColor: Colors.orangeAccent,
             value: _localMostrarTerminal,
             onChanged: (val) {
               setState(() => _localMostrarTerminal = val);
-              // Este cambio es inmediato, no requiere alerta
               widget.onChangedMostrarTerminal(val);
+            },
+          ),
+
+          // --- NUEVA OPCIÓN: MODO PRUEBA DE ERRORES ---
+          SwitchListTile(
+            title: const Text("Probar Detección de Errores", style: TextStyle(color: Colors.white)),
+            subtitle: const Text("Simula fallas (fuga, sensor, etc.) cada 2 segundos para verificar notificaciones.", style: TextStyle(color: Colors.white54, fontSize: 12)),
+            activeColor: Colors.redAccent, // Rojo para indicar peligro/alerta
+            secondary: const Icon(Icons.bug_report, color: Colors.redAccent),
+            value: _localModoPrueba,
+            onChanged: (val) {
+              setState(() => _localModoPrueba = val);
+              widget.onChangedModoPruebaErrores(val);
             },
           ),
         ],

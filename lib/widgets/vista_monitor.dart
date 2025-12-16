@@ -25,7 +25,16 @@ class VistaMonitor extends StatefulWidget {
   final Function(bool) onToggleAutoGrabar;
   final bool mostrarTerminal;
   final Function(bool) onToggleMostrarTerminal;
-  final VoidCallback onEnviarPulso;
+
+  // --- VARIABLES MODO PRUEBA ---
+  final bool modoPruebaErrores;
+  final ValueChanged<bool> onToggleModoPruebaErrores;
+
+  // --- NUEVOS CONTROLADORES DE PULSOS ---
+  final Function(String) onComandoSimple;       // Para "1v", "1t", "1e"
+  final Function(int, int) onConfigurarCamara;  // (fotosPorMin, retardo)
+  final VoidCallback onDetenerCamara;
+  final bool camaraActiva;
 
   const VistaMonitor({
     super.key,
@@ -47,7 +56,14 @@ class VistaMonitor extends StatefulWidget {
     required this.onToggleAutoGrabar,
     required this.mostrarTerminal,
     required this.onToggleMostrarTerminal,
-    required this.onEnviarPulso,
+    required this.modoPruebaErrores,
+    required this.onToggleModoPruebaErrores,
+
+    // --- NUEVOS ---
+    required this.onComandoSimple,
+    required this.onConfigurarCamara,
+    required this.onDetenerCamara,
+    required this.camaraActiva,
   });
 
   @override
@@ -71,81 +87,74 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
 
   String _getDato(int index) => (index < widget.datosRaw.length) ? widget.datosRaw[index] : "--";
 
-  // --- NUEVA FUNCIÓN: CONFIRMAR SALIDA ---
-  void _confirmarSalida() {
+  // --- NUEVO: DIÁLOGO CONFIGURACIÓN CÁMARA ---
+  void _mostrarConfigCamara() {
+    TextEditingController ctrlFotos = TextEditingController();
+    TextEditingController ctrlRetardo = TextEditingController();
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF2C2C2C),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        title: Row(
-          children: const [
-            Icon(Icons.power_settings_new, color: Colors.redAccent),
-            SizedBox(width: 10),
-            Text("Desconectar", style: TextStyle(color: Colors.white)),
+        title: const Text("Configurar Cámara Térmica", style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("Configura la secuencia de disparos:", style: TextStyle(color: Colors.white70)),
+            const SizedBox(height: 15),
+            TextField(
+              controller: ctrlFotos,
+              keyboardType: TextInputType.number,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                labelText: "Fotos por minuto",
+                hintText: "Ej: 6",
+                prefixIcon: Icon(Icons.camera_alt, color: Colors.purpleAccent),
+                filled: true,
+                fillColor: Colors.black26,
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: ctrlRetardo,
+              keyboardType: TextInputType.number,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                labelText: "Retardo inicial (segundos)",
+                hintText: "Ej: 5",
+                prefixIcon: Icon(Icons.timer, color: Colors.purpleAccent),
+                filled: true,
+                fillColor: Colors.black26,
+              ),
+            ),
           ],
-        ),
-        content: const Text(
-          "¿Seguro que quieres salir y desconectar el dispositivo?",
-          style: TextStyle(color: Colors.white70),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(), // Cierra la alerta (NO)
-            child: const Text("No", style: TextStyle(color: Colors.grey)),
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancelar", style: TextStyle(color: Colors.grey))
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.purpleAccent),
             onPressed: () {
-              Navigator.of(context).pop(); // Cierra la alerta
-              widget.onDesconectar();      // Ejecuta la desconexión real (SI)
+              int fotos = int.tryParse(ctrlFotos.text) ?? 0;
+              int retardo = int.tryParse(ctrlRetardo.text) ?? 0;
+
+              if (fotos > 0) {
+                widget.onConfigurarCamara(fotos, retardo);
+                Navigator.pop(context);
+              }
             },
-            child: const Text("Sí, Salir", style: TextStyle(color: Colors.white)),
+            child: const Text("Iniciar Secuencia", style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
     );
   }
 
-  void _mostrarDialogoTemporizador() {
-    TextEditingController _ctrlTiempo = TextEditingController();
-    String _unidad = 'Minutos';
-    showDialog(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              backgroundColor: const Color(0xFF2C2C2C),
-              title: const Text("Programar Grabación", style: TextStyle(color: Colors.white)),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text("La grabación se detendrá automáticamente después de:", style: TextStyle(color: Colors.white70)),
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Expanded(child: TextField(controller: _ctrlTiempo, keyboardType: TextInputType.number, style: const TextStyle(color: Colors.white, fontSize: 18), decoration: InputDecoration(hintText: "Ej: 60", hintStyle: TextStyle(color: Colors.white24), filled: true, fillColor: Colors.black26, border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))))),
-                      const SizedBox(width: 15),
-                      DropdownButton<String>(value: _unidad, dropdownColor: const Color(0xFF3E3E3E), style: const TextStyle(color: Colors.white, fontSize: 16), underline: Container(height: 2, color: Colors.blueAccent), onChanged: (String? newValue) { setDialogState(() { _unidad = newValue!; }); }, items: <String>['Minutos', 'Horas'].map<DropdownMenuItem<String>>((String value) { return DropdownMenuItem<String>(value: value, child: Text(value)); }).toList()),
-                    ],
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(child: const Text("Cancelar", style: TextStyle(color: Colors.grey)), onPressed: () => Navigator.of(context).pop()),
-                ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent), child: const Text("Iniciar", style: TextStyle(color: Colors.white)), onPressed: () { if (_ctrlTiempo.text.isNotEmpty) { int valor = int.tryParse(_ctrlTiempo.text) ?? 0; if (valor > 0) { Duration tiempo = (_unidad == 'Horas') ? Duration(hours: valor) : Duration(minutes: valor); widget.onProgramarTimer(tiempo); Navigator.of(context).pop(); } } }),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  void _mostrarBloqueoAutomatico() {
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Desactiva la grabación automática para utilizar esto", style: TextStyle(color: Colors.white)), backgroundColor: Colors.redAccent, duration: Duration(seconds: 2)));
-  }
+  void _confirmarSalida() { showDialog(context: context, builder: (context) => AlertDialog(backgroundColor: const Color(0xFF2C2C2C), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)), title: Row(children: const [Icon(Icons.power_settings_new, color: Colors.redAccent), SizedBox(width: 10), Text("Desconectar", style: TextStyle(color: Colors.white))]), content: const Text("¿Seguro que quieres salir y desconectar el dispositivo?", style: TextStyle(color: Colors.white70)), actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text("No", style: TextStyle(color: Colors.grey))), ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent), onPressed: () { Navigator.of(context).pop(); widget.onDesconectar(); }, child: const Text("Sí, Salir", style: TextStyle(color: Colors.white))) ])); }
+  void _mostrarDialogoTemporizador() { TextEditingController _ctrlTiempo = TextEditingController(); String _unidad = 'Minutos'; showDialog(context: context, builder: (context) { return StatefulBuilder(builder: (context, setDialogState) { return AlertDialog(backgroundColor: const Color(0xFF2C2C2C), title: const Text("Programar Grabación", style: TextStyle(color: Colors.white)), content: Column(mainAxisSize: MainAxisSize.min, children: [const Text("La grabación se detendrá automáticamente después de:", style: TextStyle(color: Colors.white70)), const SizedBox(height: 20), Row(children: [Expanded(child: TextField(controller: _ctrlTiempo, keyboardType: TextInputType.number, style: const TextStyle(color: Colors.white, fontSize: 18), decoration: InputDecoration(hintText: "Ej: 60", hintStyle: TextStyle(color: Colors.white24), filled: true, fillColor: Colors.black26, border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))))), const SizedBox(width: 15), DropdownButton<String>(value: _unidad, dropdownColor: const Color(0xFF3E3E3E), style: const TextStyle(color: Colors.white, fontSize: 16), underline: Container(height: 2, color: Colors.blueAccent), onChanged: (String? newValue) { setDialogState(() { _unidad = newValue!; }); }, items: <String>['Minutos', 'Horas'].map<DropdownMenuItem<String>>((String value) { return DropdownMenuItem<String>(value: value, child: Text(value)); }).toList())])]), actions: [TextButton(child: const Text("Cancelar", style: TextStyle(color: Colors.grey)), onPressed: () => Navigator.of(context).pop()), ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent), child: const Text("Iniciar", style: TextStyle(color: Colors.white)), onPressed: () { if (_ctrlTiempo.text.isNotEmpty) { int valor = int.tryParse(_ctrlTiempo.text) ?? 0; if (valor > 0) { Duration tiempo = (_unidad == 'Horas') ? Duration(hours: valor) : Duration(minutes: valor); widget.onProgramarTimer(tiempo); Navigator.of(context).pop(); } } })]); }); }); }
+  void _mostrarBloqueoAutomatico() { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Desactiva la grabación automática para utilizar esto", style: TextStyle(color: Colors.white)), backgroundColor: Colors.redAccent, duration: Duration(seconds: 2))); }
 
   @override
   Widget build(BuildContext context) {
@@ -174,11 +183,7 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
       children: [
         Expanded(flex: 6, child: Container(padding: const EdgeInsets.all(10), color: const Color(0xFF121212), child: AnimatedBuilder(animation: _tabController, builder: (ctx, _) => _buildGraficaInteligente()))),
         const VerticalDivider(width: 1, color: Colors.white24),
-        Expanded(flex: 4, child: Column(children: [
-          _buildHeaderControles(true),
-          Container(color: const Color(0xFF1E1E1E), child: TabBar(controller: _tabController, labelColor: Colors.blueAccent, unselectedLabelColor: Colors.grey, indicatorColor: Colors.blueAccent, dividerColor: Colors.transparent, tabs: const [Tab(icon: Icon(Icons.thermostat), text: "Temp"), Tab(icon: Icon(Icons.speed), text: "Pres"), Tab(icon: Icon(Icons.cloud), text: "Amb"), Tab(icon: Icon(Icons.flash_on), text: "Elec")])),
-          Expanded(child: Container(color: const Color(0xFF1E1E1E), child: AnimatedBuilder(animation: _tabController, builder: (ctx, _) => ListView(padding: const EdgeInsets.all(12), children: _buildDatosDePestana(_tabController.index)))))
-        ]))
+        Expanded(flex: 4, child: Column(children: [_buildHeaderControles(true), Container(color: const Color(0xFF1E1E1E), child: TabBar(controller: _tabController, labelColor: Colors.blueAccent, unselectedLabelColor: Colors.grey, indicatorColor: Colors.blueAccent, dividerColor: Colors.transparent, tabs: const [Tab(icon: Icon(Icons.thermostat), text: "Temp"), Tab(icon: Icon(Icons.speed), text: "Pres"), Tab(icon: Icon(Icons.cloud), text: "Amb"), Tab(icon: Icon(Icons.flash_on), text: "Elec")])), Expanded(child: Container(color: const Color(0xFF1E1E1E), child: AnimatedBuilder(animation: _tabController, builder: (ctx, _) => ListView(padding: const EdgeInsets.all(12), children: _buildDatosDePestana(_tabController.index))))) ]))
       ],
     );
   }
@@ -199,26 +204,97 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
               IconButton(icon: const Icon(Icons.timer, size: 28), color: colorBtnTimer, onPressed: () { if (widget.autoGrabar) { _mostrarBloqueoAutomatico(); } else { _mostrarDialogoTemporizador(); } }),
               if (!esHorizontal && widget.textoTiempoRestante.isNotEmpty) ...[const SizedBox(width: 8), Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.orangeAccent.withOpacity(0.2), borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.orangeAccent)), child: Text(widget.textoTiempoRestante, style: const TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold, fontFamily: 'monospace')))]
             ]),
-
             Flexible(
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  IconButton(icon: const Icon(Icons.bolt, color: Colors.yellowAccent), tooltip: "Enviar Pulso", onPressed: widget.onEnviarPulso),
+
+                  // --- MENÚ DESPLEGABLE DE ACTUADORES ---
+                  PopupMenuButton<String>(
+                    icon: Icon(
+                        Icons.flash_on, // Rayo
+                        color: widget.camaraActiva ? Colors.purpleAccent : Colors.yellowAccent
+                    ),
+                    tooltip: "Panel de Actuadores",
+                    color: const Color(0xFF2C2C2C),
+                    onSelected: (valor) {
+                      switch (valor) {
+                        case 'valvula': widget.onComandoSimple("1v"); break;
+                        case 'resistencia': widget.onComandoSimple("1t"); break;
+                        case 'bomba': widget.onComandoSimple("1e"); break;
+                        case 'camara':
+                          if (widget.camaraActiva) {
+                            widget.onDetenerCamara();
+                          } else {
+                            _mostrarConfigCamara();
+                          }
+                          break;
+                      }
+                    },
+                    itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                      const PopupMenuItem<String>(
+                        enabled: false,
+                        child: Text("ENVIAR PULSO A:", style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+                      ),
+                      const PopupMenuItem<String>(
+                        value: 'valvula',
+                        child: ListTile(
+                          leading: Icon(Icons.circle_outlined, color: Colors.blue),
+                          title: Text("Válvula Reflujo", style: TextStyle(color: Colors.white)),
+                          trailing: Text("1v", style: TextStyle(color: Colors.grey, fontSize: 10)),
+                        ),
+                      ),
+                      const PopupMenuItem<String>(
+                        value: 'resistencia',
+                        child: ListTile(
+                          leading: Icon(Icons.whatshot, color: Colors.orange),
+                          title: Text("Resist. Térmica", style: TextStyle(color: Colors.white)),
+                          trailing: Text("1t", style: TextStyle(color: Colors.grey, fontSize: 10)),
+                        ),
+                      ),
+                      const PopupMenuItem<String>(
+                        value: 'bomba',
+                        child: ListTile(
+                          leading: Icon(Icons.water_drop, color: Colors.cyan),
+                          title: Text("Bomba Enfriamiento", style: TextStyle(color: Colors.white)),
+                          trailing: Text("1e", style: TextStyle(color: Colors.grey, fontSize: 10)),
+                        ),
+                      ),
+                      const PopupMenuDivider(),
+                      PopupMenuItem<String>(
+                        value: 'camara',
+                        child: ListTile(
+                          leading: Icon(Icons.camera_alt, color: widget.camaraActiva ? Colors.red : Colors.purpleAccent),
+                          title: Text(widget.camaraActiva ? "DETENER Cámara" : "Cámara Térmica", style: TextStyle(color: widget.camaraActiva ? Colors.redAccent : Colors.white)),
+                          subtitle: widget.camaraActiva ? const Text("Secuencia activa...", style: TextStyle(fontSize: 10, color: Colors.green)) : null,
+                        ),
+                      ),
+                    ],
+                  ),
+
                   IconButton(icon: const Icon(Icons.save_alt, color: Colors.greenAccent), onPressed: widget.onExportar),
 
                   // --- BOTÓN APAGAR CON CONFIRMACIÓN ---
                   IconButton(
                     icon: const Icon(Icons.power_settings_new, color: Colors.redAccent),
                     tooltip: "Desconectar",
-                    onPressed: _confirmarSalida, // <--- CAMBIO AQUÍ
+                    onPressed: _confirmarSalida,
                   ),
 
                   PopupMenuButton<String>(
                     icon: const Icon(Icons.more_vert, color: Colors.white),
                     onSelected: (val) {
                       if (val == 'config') {
-                        Navigator.push(context, MaterialPageRoute(builder: (context) => PantallaConfiguracion(autoGrabar: widget.autoGrabar, onChangedAutoGrabar: widget.onToggleAutoGrabar, mostrarTerminal: widget.mostrarTerminal, onChangedMostrarTerminal: widget.onToggleMostrarTerminal)));
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => PantallaConfiguracion(
+                          autoGrabar: widget.autoGrabar,
+                          onChangedAutoGrabar: widget.onToggleAutoGrabar,
+                          mostrarTerminal: widget.mostrarTerminal,
+                          onChangedMostrarTerminal: widget.onToggleMostrarTerminal,
+
+                          // --- AQUÍ PASAMOS LOS DATOS DE LA PRUEBA ---
+                          modoPruebaErrores: widget.modoPruebaErrores,
+                          onChangedModoPruebaErrores: widget.onToggleModoPruebaErrores,
+                        )));
                       }
                     },
                     itemBuilder: (BuildContext context) {
@@ -237,7 +313,7 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
     );
   }
 
-  // ... (Resto de métodos _buildGraficaInteligente, etc. IGUALES) ...
+  // ... (Resto igual: _buildGraficaInteligente, _buildDatosDePestana, etc.) ...
   Widget _buildGraficaInteligente() { switch (_tabController.index) { case 0: return SensorChartMulti(lineas: widget.historialTemps, lineaSeleccionada: _tempSeleccionada, minY: 0, maxY: 200, intervalY: 25, unidadTooltip: "°C"); case 1: return SensorChartMulti(lineas: widget.historialPresionesSistema, lineaSeleccionada: _presionSeleccionada, minY: 0, maxY: 60, intervalY: 10, unidadTooltip: "Psi"); case 2: if (_ambienteSeleccionado == 0) return SensorChart(puntos: widget.historialTempAmb, colorLinea: Colors.green, minY: 0, maxY: 50, intervalY: 5); if (_ambienteSeleccionado == 1) return SensorChart(puntos: widget.historialHumedad, colorLinea: Colors.lightBlue, minY: 0, maxY: 100, intervalY: 20); double minY = 80000; double maxY = 120000; if (widget.historialPresionAtm.isNotEmpty) { List<double> valores = widget.historialPresionAtm.map((e) => e.y).where((v) => v > 50000).toList(); if (valores.isNotEmpty) { double minVal = valores.reduce(min); double maxVal = valores.reduce(max); double diferencia = maxVal - minVal; if (diferencia < 10) { minY = minVal - 50; maxY = maxVal + 50; } else { double margen = diferencia * 0.2; minY = minVal - margen; maxY = maxVal + margen; } } } return SensorChart(puntos: widget.historialPresionAtm, colorLinea: Colors.blueGrey, minY: minY, maxY: maxY); case 3: return SensorChart(puntos: widget.historialPotencia, colorLinea: Colors.purpleAccent, minY: 0, maxY: 2000, intervalY: 250); default: return const SizedBox(); } }
   List<Widget> _buildDatosDePestana(int index) { switch (index) { case 0: return _buildGridTemperaturas(); case 1: return _buildGridPresiones(); case 2: return _buildListaAmbiente(); case 3: return _buildListaElectrico(); default: return []; } }
   List<Widget> _buildGridTemperaturas() { final cols = SensorChartMulti.coloresFijos; return [_btnResetSelection(() => setState(() => _tempSeleccionada = -1), "Ver Todas"), const SizedBox(height: 10), GridView.count(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), crossAxisCount: 2, childAspectRatio: 2.0, mainAxisSpacing: 8, crossAxisSpacing: 8, children: [ _cardSelectable(0, "Hervidor", _getDato(0), "°C", Colors.orange, cols[0], _tempSeleccionada, (i) => setState(() => _tempSeleccionada = i)), _cardSelectable(1, "Plato 2", _getDato(1), "°C", Colors.orange, cols[1], _tempSeleccionada, (i) => setState(() => _tempSeleccionada = i)), _cardSelectable(2, "Plato 4", _getDato(2), "°C", Colors.orange, cols[2], _tempSeleccionada, (i) => setState(() => _tempSeleccionada = i)), _cardSelectable(3, "Plato 6", _getDato(3), "°C", Colors.orange, cols[3], _tempSeleccionada, (i) => setState(() => _tempSeleccionada = i)), _cardSelectable(4, "Plato 8", _getDato(4), "°C", Colors.orange, cols[4], _tempSeleccionada, (i) => setState(() => _tempSeleccionada = i)), _cardSelectable(5, "Plato 10", _getDato(5), "°C", Colors.orange, cols[5], _tempSeleccionada, (i) => setState(() => _tempSeleccionada = i)), _cardSelectable(6, "Condensador", _getDato(6), "°C", Colors.orange, cols[6], _tempSeleccionada, (i) => setState(() => _tempSeleccionada = i)), ])]; }
