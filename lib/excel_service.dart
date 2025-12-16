@@ -15,10 +15,10 @@ class ExcelService {
       // 1. ENCABEZADOS (Tus 24 variables)
       List<String> titulosString = [
         "Hora Lectura",
-        "T1 (Entrada)", "T2", "T3", "T4", "T5", "T6", "T7",
+        "T. HERVIDOR", "T. PLATO 2", "T. PLATO 4", "T. PLATO 6", "T. PLATO 8", "T. PLATO 10", "T. CONDENSADOR",
         "Humedad Amb", "Presión Atm", "Temp Amb",
-        "P. Hervidor", "P. Sensor 2", "P. Sensor 3", "P. Sensor 4",
-        "P. Sensor 5", "P. Sensor 6", "P. Sensor 7",
+        "P. HERVIDOR", "P. PLATO 2", "P. PLATO 4", "P. PLATO 6",
+        "P. PLATO 8", "P. PLATO 10", "P. CONDENSADOR",
         "Err Sensor", "Err Reflujo", "Err Fuga", "Err Válvula",
         "Corriente (A)", "Voltaje (V)", "Potencia (W)"
       ];
