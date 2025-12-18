@@ -87,7 +87,7 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
 
   String _getDato(int index) => (index < widget.datosRaw.length) ? widget.datosRaw[index] : "--";
 
-  // --- NUEVO: DIÁLOGO CONFIGURACIÓN CÁMARA ---
+  // --- DIÁLOGO CONFIGURACIÓN CÁMARA ---
   void _mostrarConfigCamara() {
     TextEditingController ctrlFotos = TextEditingController();
     TextEditingController ctrlRetardo = TextEditingController();
@@ -281,6 +281,7 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
                     onPressed: _confirmarSalida,
                   ),
 
+                  // --- MENÚ DE CONFIGURACIÓN Y AYUDA ---
                   PopupMenuButton<String>(
                     icon: const Icon(Icons.more_vert, color: Colors.white),
                     onSelected: (val) {
@@ -295,12 +296,42 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
                           modoPruebaErrores: widget.modoPruebaErrores,
                           onChangedModoPruebaErrores: widget.onToggleModoPruebaErrores,
                         )));
+                      } else if (val == 'info') {
+                        // --- AQUÍ ESTÁ EL CASE INFO QUE FALTABA ---
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            backgroundColor: const Color(0xFF2C2C2C),
+                            title: const Text("Acerca de", style: TextStyle(color: Colors.white)),
+                            content: SingleChildScrollView(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: const [
+                                  Text("Monitor de Destilación v1.0", style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold)),
+                                  SizedBox(height: 10),
+                                  Text("Desarrollado por:", style: TextStyle(color: Colors.white70)),
+                                  Text("• Julio Cesar Araujo Hernandez", style: TextStyle(color: Colors.white)),
+                                  Text("• Katia Aguilar Calderon", style: TextStyle(color: Colors.white)),
+                                  SizedBox(height: 15),
+                                  Text("Descripción:", style: TextStyle(color: Colors.white70)),
+                                  Text("Sistema de monitoreo en tiempo real para variables de destilación, incluyendo temperatura, presión y control de actuadores.", style: TextStyle(color: Colors.white54, fontSize: 12)),
+                                  SizedBox(height: 15),
+                                  Text("Repositorio:", style: TextStyle(color: Colors.white70)),
+                                  Text("https://github.com/tu-usuario/monitor_destilacion", style: TextStyle(color: Colors.blue, decoration: TextDecoration.underline)),
+                                ],
+                              ),
+                            ),
+                            actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cerrar", style: TextStyle(color: Colors.blueAccent)))],
+                          ),
+                        );
                       }
                     },
                     itemBuilder: (BuildContext context) {
                       return [
                         PopupMenuItem(enabled: false, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text("Conectado a:", style: TextStyle(fontSize: 10, color: Colors.grey)), Row(children: [const Icon(Icons.bluetooth_connected, size: 14, color: Colors.blueAccent), const SizedBox(width: 5), Text(widget.nombreDispositivo, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white))]), const Divider(color: Colors.white24)])),
-                        const PopupMenuItem(value: 'config', child: Row(children: [Icon(Icons.settings, color: Colors.grey), SizedBox(width: 10), Text("Configuración")])),
+                        const PopupMenuItem(
+                            value: 'config', child: Row(children: [Icon(Icons.settings, color: Colors.grey), SizedBox(width: 10), Text("Configuración")])),
                         const PopupMenuItem(value: 'info', child: Row(children: [Icon(Icons.info_outline, color: Colors.grey), SizedBox(width: 10), Text("Ayuda")])),
                       ];
                     },
@@ -313,8 +344,11 @@ class _VistaMonitorState extends State<VistaMonitor> with TickerProviderStateMix
     );
   }
 
-  // ... (Resto igual: _buildGraficaInteligente, _buildDatosDePestana, etc.) ...
-  Widget _buildGraficaInteligente() { switch (_tabController.index) { case 0: return SensorChartMulti(lineas: widget.historialTemps, lineaSeleccionada: _tempSeleccionada, minY: 0, maxY: 200, intervalY: 25, unidadTooltip: "°C"); case 1: return SensorChartMulti(lineas: widget.historialPresionesSistema, lineaSeleccionada: _presionSeleccionada, minY: 0, maxY: 60, intervalY: 10, unidadTooltip: "Psi"); case 2: if (_ambienteSeleccionado == 0) return SensorChart(puntos: widget.historialTempAmb, colorLinea: Colors.green, minY: 0, maxY: 50, intervalY: 5); if (_ambienteSeleccionado == 1) return SensorChart(puntos: widget.historialHumedad, colorLinea: Colors.lightBlue, minY: 0, maxY: 100, intervalY: 20); double minY = 80000; double maxY = 120000; if (widget.historialPresionAtm.isNotEmpty) { List<double> valores = widget.historialPresionAtm.map((e) => e.y).where((v) => v > 50000).toList(); if (valores.isNotEmpty) { double minVal = valores.reduce(min); double maxVal = valores.reduce(max); double diferencia = maxVal - minVal; if (diferencia < 10) { minY = minVal - 50; maxY = maxVal + 50; } else { double margen = diferencia * 0.2; minY = minVal - margen; maxY = maxVal + margen; } } } return SensorChart(puntos: widget.historialPresionAtm, colorLinea: Colors.blueGrey, minY: minY, maxY: maxY); case 3: return SensorChart(puntos: widget.historialPotencia, colorLinea: Colors.purpleAccent, minY: 0, maxY: 2000, intervalY: 250); default: return const SizedBox(); } }
+  Widget _buildGraficaInteligente() {
+    switch (_tabController.index) {
+      case 0:
+        return
+          SensorChartMulti(lineas: widget.historialTemps, lineaSeleccionada: _tempSeleccionada, minY: 0, maxY: 100, intervalY: 10, unidadTooltip: "°C"); case 1: return SensorChartMulti(lineas: widget.historialPresionesSistema, lineaSeleccionada: _presionSeleccionada, minY: 0, maxY: 60, intervalY: 10, unidadTooltip: "Psi"); case 2: if (_ambienteSeleccionado == 0) return SensorChart(puntos: widget.historialTempAmb, colorLinea: Colors.green, minY: 0, maxY: 50, intervalY: 5); if (_ambienteSeleccionado == 1) return SensorChart(puntos: widget.historialHumedad, colorLinea: Colors.lightBlue, minY: 0, maxY: 100, intervalY: 20); double minY = 80000; double maxY = 120000; if (widget.historialPresionAtm.isNotEmpty) { List<double> valores = widget.historialPresionAtm.map((e) => e.y).where((v) => v > 50000).toList(); if (valores.isNotEmpty) { double minVal = valores.reduce(min); double maxVal = valores.reduce(max); double diferencia = maxVal - minVal; if (diferencia < 10) { minY = minVal - 50; maxY = maxVal + 50; } else { double margen = diferencia * 0.2; minY = minVal - margen; maxY = maxVal + margen; } } } return SensorChart(puntos: widget.historialPresionAtm, colorLinea: Colors.blueGrey, minY: minY, maxY: maxY); case 3: return SensorChart(puntos: widget.historialPotencia, colorLinea: Colors.purpleAccent, minY: 0, maxY: 2000, intervalY: 250); default: return const SizedBox(); } }
   List<Widget> _buildDatosDePestana(int index) { switch (index) { case 0: return _buildGridTemperaturas(); case 1: return _buildGridPresiones(); case 2: return _buildListaAmbiente(); case 3: return _buildListaElectrico(); default: return []; } }
   List<Widget> _buildGridTemperaturas() { final cols = SensorChartMulti.coloresFijos; return [_btnResetSelection(() => setState(() => _tempSeleccionada = -1), "Ver Todas"), const SizedBox(height: 10), GridView.count(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), crossAxisCount: 2, childAspectRatio: 2.0, mainAxisSpacing: 8, crossAxisSpacing: 8, children: [ _cardSelectable(0, "Hervidor", _getDato(0), "°C", Colors.orange, cols[0], _tempSeleccionada, (i) => setState(() => _tempSeleccionada = i)), _cardSelectable(1, "Plato 2", _getDato(1), "°C", Colors.orange, cols[1], _tempSeleccionada, (i) => setState(() => _tempSeleccionada = i)), _cardSelectable(2, "Plato 4", _getDato(2), "°C", Colors.orange, cols[2], _tempSeleccionada, (i) => setState(() => _tempSeleccionada = i)), _cardSelectable(3, "Plato 6", _getDato(3), "°C", Colors.orange, cols[3], _tempSeleccionada, (i) => setState(() => _tempSeleccionada = i)), _cardSelectable(4, "Plato 8", _getDato(4), "°C", Colors.orange, cols[4], _tempSeleccionada, (i) => setState(() => _tempSeleccionada = i)), _cardSelectable(5, "Plato 10", _getDato(5), "°C", Colors.orange, cols[5], _tempSeleccionada, (i) => setState(() => _tempSeleccionada = i)), _cardSelectable(6, "Condensador", _getDato(6), "°C", Colors.orange, cols[6], _tempSeleccionada, (i) => setState(() => _tempSeleccionada = i)), ])]; }
   List<Widget> _buildGridPresiones() { final cols = SensorChartMulti.coloresFijos; return [_btnResetSelection(() => setState(() => _presionSeleccionada = -1), "Ver Todas"), const SizedBox(height: 10), GridView.count(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), crossAxisCount: 2, childAspectRatio: 2.0, mainAxisSpacing: 8, crossAxisSpacing: 8, children: [ _cardSelectable(0, "Hervidor", _getDato(10), "Psi", Colors.blue, cols[0], _presionSeleccionada, (i) => setState(() => _presionSeleccionada = i)), _cardSelectable(1, "S2", _getDato(11), "Psi", Colors.blue, cols[1], _presionSeleccionada, (i) => setState(() => _presionSeleccionada = i)), _cardSelectable(2, "S3", _getDato(12), "Psi", Colors.blue, cols[2], _presionSeleccionada, (i) => setState(() => _presionSeleccionada = i)), _cardSelectable(3, "S4", _getDato(13), "Psi", Colors.blue, cols[3], _presionSeleccionada, (i) => setState(() => _presionSeleccionada = i)), _cardSelectable(4, "S5", _getDato(14), "Psi", Colors.blue, cols[4], _presionSeleccionada, (i) => setState(() => _presionSeleccionada = i)), _cardSelectable(5, "S6", _getDato(15), "Psi", Colors.blue, cols[5], _presionSeleccionada, (i) => setState(() => _presionSeleccionada = i)), _cardSelectable(6, "S7", _getDato(16), "Psi", Colors.blue, cols[6], _presionSeleccionada, (i) => setState(() => _presionSeleccionada = i)), ])]; }

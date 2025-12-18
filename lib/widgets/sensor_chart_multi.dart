@@ -23,13 +23,13 @@ class SensorChartMulti extends StatelessWidget {
   });
 
   static const List<Color> coloresFijos = [
-    Colors.redAccent,    // 0: Hervidor
-    Colors.blueAccent,   // 1: S2
-    Colors.greenAccent,  // 2: S3
-    Colors.orangeAccent, // 3: S4
-    Colors.purpleAccent, // 4: S5
-    Colors.tealAccent,   // 5: S6
-    Colors.pinkAccent,   // 6: S7
+    Colors.orange,       // 0: Hervidor
+    Colors.blue,         // 1: Plato 2
+    Colors.deepPurple,   // 2: Plato 4
+    Colors.green,        // 3: Plato 6
+    Colors.yellow,       // 4: Plato 8
+    Colors.white,        // 5: Plato 10
+    Colors.red,    // 6: Condensador
   ];
 
   @override

@@ -37,7 +37,6 @@ dependencies:
   path_provider: ^2.1.2
   excel: ^4.0.6
   share_plus: ^10.0.0
-  open_file: ^3.3.2
   cupertino_icons: ^1.0.8
   wakelock_plus: ^1.1.0
   flutter_local_notifications: ^17.0.0
@@ -45,14 +44,18 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-
+  flutter_launcher_icons: ^0.13.1
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
   # activated in the `analysis_options.yaml` file located at the root of your
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
-
+flutter_launcher_icons:
+  android: "ic_launcher"
+  ios: true
+  image_path: "assets/icon.png"
+  min_sdk_android: 21
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
