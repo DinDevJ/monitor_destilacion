@@ -77,4 +77,4 @@ Este directorio contiene todas las pantallas y los widgets reutilizables de la a
     ```
 
 ---
-*Servicio Social - Ingeniería en Sistemas Computacionales*
+*Servicio Social - Ingeniería en Sistemas Computacionales - Instituto Tecnologico de Morelia*
