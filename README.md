@@ -1,23 +1,80 @@
-# monitor_destilacion
+# Monitor de Destilación (v1.0)
 
-Remasterizacion del monitor de destilacion antiguo. Servicio Social.
+**Proyecto de Servicio Social**
+Desarrollado por: Julio Cesar Araujo Hernandez y Katia Aguilar Calderon.
 
-## A TOMAR EN CUENTA
+Este proyecto es una aplicación móvil desarrollada en **Flutter** para el monitoreo en tiempo real, control y registro de datos de una columna de destilación automatizada.
 
-Esta aplicacion es una remasterizacion de una aplicacion vieja pero casi no tiene nada de esta,
-unicamente se tomo en cuenta el algoritmo para leer los codigos de la maquina pero este a su vez
-fue mejorado y optimizado por lo que se podria decir que es una aplicacion nueva
+## Descripción General
 
-## ESTRUCTURA
+Esta aplicación representa una remasterización completa de la versión anterior utilizada en el laboratorio. Aunque se conservó la lógica fundamental del protocolo de comunicación serial para interpretar los códigos de la máquina, el núcleo de la aplicación ha sido reescrito desde cero utilizando tecnologías modernas.
 
-La estructura de los archivos son los siguientes
-/Lib
-    /widgets <--- Este directorio guarda todo la vista de nuestra aplicacion
-        pantalla_detalle.dart <-- Cuando le das a un elemento se abre la pestaña de detalle
-        sensor_chart.dart <--- Las graficas de cada elemento en general (Presion, Temp, Humedad)
-        sensor_chart_multi.dart <--- Aqui se ve la grafica pero cuando lo vez desde detalles
-        vista_conexion.dart <--- La vista cuando estas buscando conexiones de bluetooth
-        vista_monitor.dart <--- La vista de todos los elementos para un monitoreo rapido
-    bluetooth_service.dart <--- Este script nos ayuda a enlazarnos efectivamente y sin errores
-    excel_service.dart <--- Este exporta toda la informacion a un excel
-    main.dart <--- Este junta todos los elementos anteriores y es el cerebro del sistema
+**Mejoras clave respecto a la versión anterior:**
+* **Optimización del Algoritmo:** El decodificador de tramas de datos fue refactorizado para mayor velocidad y para implementar filtros de ruido en las lecturas de los sensores.
+* **Arquitectura Robusta:** Implementación de servicios aislados para Bluetooth, Excel y Notificaciones.
+* **Segundo Plano:** Capacidad de operar, alertar y registrar datos con la pantalla apagada o la aplicación minimizada.
+* **Interfaz Moderna:** Gráficas vectoriales en tiempo real e interfaz de usuario (UI) adaptativa.
+
+## Tecnologías y Dependencias
+
+Para futuros desarrolladores que deseen modificar o mantener este proyecto, a continuación se listan las librerías y tecnologías principales utilizadas:
+
+* **Lenguaje:** Dart (Flutter SDK).
+* **Comunicación Serial:** `flutter_bluetooth_serial` - Manejo de la conexión SPP con módulos HC-05/HC-06.
+* **Visualización de Datos:** `fl_chart` - Renderizado de gráficas lineales de alto rendimiento para temperaturas y presiones.
+* **Persistencia y Exportación:**
+    * `excel` - Generación de archivos .xlsx nativos.
+    * `share_plus` - Integración con el sistema para compartir archivos (Drive, WhatsApp, Correo).
+    * `shared_preferences` - Almacenamiento local de configuraciones de usuario.
+* **Sistema y Segundo Plano:**
+    * `flutter_background` - Servicio para mantener la ejecución viva (Foreground Service) en Android.
+    * `wakelock_plus` - Prevención del bloqueo automático de pantalla durante el monitoreo.
+    * `flutter_local_notifications` - Sistema de alertas locales para errores críticos y temporizadores.
+    * `permission_handler` - Gestión de permisos en tiempo de ejecución (Ubicación, Bluetooth, Notificaciones).
+
+## Estructura del Proyecto
+
+A continuación se describe la arquitectura de archivos y la responsabilidad de cada componente dentro del directorio `/lib`:
+
+### Núcleo y Servicios (Raíz de /lib)
+* **main.dart**:
+    * Es el punto de entrada de la aplicación.
+    * Orquesta el ciclo de vida de la app, inicializa los servicios globales y contiene la lógica central de procesamiento de datos (parsing de tramas, filtros de señal y detección de errores).
+* **bluetooth_service.dart**:
+    * Maneja la capa de comunicación con el hardware.
+    * Gestiona la conexión asíncrona, el flujo de datos (Stream) y la reconexión automática.
+* **excel_service.dart**:
+    * Encargado de la persistencia de datos.
+    * Genera reportes con formato estilizado y sincroniza eventos externos (como el disparo de la cámara térmica) dentro de la hoja de cálculo.
+* **notification_service.dart**:
+    * Singleton encargado de las alertas del sistema.
+    * Lanza notificaciones críticas y avisos de procesos finalizados.
+
+### Interfaz y Componentes Visuales (/lib/widgets)
+Este directorio contiene todas las pantallas y los widgets reutilizables de la aplicación:
+
+* **vista_conexion.dart**:
+    * Primera pantalla de la aplicación. Escanea dispositivos Bluetooth y gestiona la conexión.
+* **vista_monitor.dart**:
+    * Dashboard Principal. Muestra el resumen de sensores, gráficas en tiempo real y contiene el menú de control de actuadores (Válvulas, Resistencias, Cámara).
+* **pantalla_detalle.dart**:
+    * Vista de enfoque. Permite analizar un sensor específico con mayor detalle al seleccionarlo desde el monitor.
+* **pantalla_configuracion.dart**:
+    * Menú de ajustes. Controla la grabación automática, visualización de terminal (debug) y el simulador de errores.
+* **sensor_chart.dart**:
+    * Componente de gráfica lineal simple (usado para Humedad, Ambiente, Potencia).
+* **sensor_chart_multi.dart**:
+    * Componente de gráfica avanzada para múltiples líneas simultáneas (usado para comparar Platos de Destilación y Presiones).
+
+## Instalación y Despliegue
+
+1.  Clonar el repositorio.
+2.  Asegurar tener Flutter SDK instalado y configurado.
+3.  Ejecutar `flutter pub get` en la terminal para instalar las dependencias listadas.
+4.  Para generar el instalable final (APK) optimizado:
+    ```bash
+    flutter build apk --release
+    ```
+
+---
+*Servicio Social - Ingeniería en Sistemas Computacionales*
