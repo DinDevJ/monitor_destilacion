@@ -83,25 +83,31 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
   String _buffer = "";
   String _debugVisual = "Esperando...";
 
+  // --- MAPA DE LETRAS ACTUALIZADO (Nuevo Formato) ---
   final Map<String, int> _mapaLetras = {
-    'a': 0, 'b': 1, 'c': 2, 'd': 3, 'e': 4, 'f': 5, 'g': 6,
-    'h': 7, 'i': 8, 'j': 9, 'k': 10, 'l': 11, 'm': 12, 'n': 13, 'o': 14, 'p': 15, 'q': 16,
-    'r': 17, 's': 18, 't': 19, 'u': 20, 'v': 21, 'w': 22, 'x': 23
+    'a': 0, 'b': 1, 'c': 2, 'd': 3, 'e': 4, 'f': 5, 'g': 6, // Temperaturas
+    'h': 7, // Humedad
+    'i': 8, // Temp Amb
+    'j': 9, // Presion Atm
+    'k': 10, 'l': 11, 'm': 12, 'n': 13, 'o': 14, 'p': 15, 'q': 16, // Presiones
+    'r': 17, 's': 18, 't': 19, 'u': 20, // Fallas
+    'v': 21, 'w': 22, 'x': 23 // Electrico
+    // AQUI SE AGREGAN OTRAS VARIABLES
   };
 
-  // --- CONFIGURACIÓN DE FILTROS (ESCALABILIDAD) ---
+  // --- CONFIGURACIÓN DE FILTROS (ROBUSTEZ) ---
   final Map<int, Map<String, double>> _configSensores = {
-    0: {'min': 0, 'max': 250, 'salto': 50}, // Hervidor (b)
-    1: {'min': 0, 'max': 200, 'salto': 40}, // Temp 1 (b)
-    2: {'min': 0, 'max': 200, 'salto': 40}, // Temp 2 (c)
-    3: {'min': 0, 'max': 200, 'salto': 40}, // Temp 3 (d)
-    4: {'min': 0, 'max': 200, 'salto': 40}, // Temp 4 (e)
-    5: {'min': 0, 'max': 200, 'salto': 40}, // Temp 5 (f)
-    6: {'min': 0, 'max': 200, 'salto': 40}, // Temp 6 (g)
-    7: {'min': 0, 'max': 100, 'salto': 20}, // Humedad (h)
-    8: {'min': -20, 'max': 80, 'salto': 15}, // Temp Amb (i)
-    9: {'min': 50000, 'max': 130000, 'salto': 10000}, // Presión Atm (j)
-    23: {'min': 0, 'max': 5000, 'salto': 1000}, // Potencia (x)
+    0: {'min': 0, 'max': 250, 'salto': 50}, // Hervidor
+    1: {'min': 0, 'max': 200, 'salto': 40}, // Platos...
+    2: {'min': 0, 'max': 200, 'salto': 40},
+    3: {'min': 0, 'max': 200, 'salto': 40},
+    4: {'min': 0, 'max': 200, 'salto': 40},
+    5: {'min': 0, 'max': 200, 'salto': 40},
+    6: {'min': 0, 'max': 200, 'salto': 40}, // Condensador
+    7: {'min': 0, 'max': 100, 'salto': 20}, // Humedad
+    8: {'min': -20, 'max': 80, 'salto': 15}, // Temp Amb
+    9: {'min': 50, 'max': 120, 'salto': 10}, // Presión Atm (kPa: 81.6)
+    23: {'min': 0, 'max': 5000, 'salto': 1000}, // Potencia
   };
 
   @override
@@ -121,42 +127,51 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
         String msg = (data is List<int>) ? String.fromCharCodes(data) : data.toString();
         _buffer += msg;
         if (_buffer.isNotEmpty) _procesarBuffer();
-        if (_buffer.length > 1000) _buffer = _buffer.substring(_buffer.length - 200);
+        // Buffer más grande para evitar cortes en tramas largas
+        if (_buffer.length > 2000) _buffer = _buffer.substring(_buffer.length - 500);
       } catch (e) {
         if (_mostrarTerminal) setState(() => _debugVisual = "Error: $e");
       }
     });
   }
 
-  // --- NUEVO PROCESADOR ROBUSTO ---
+  // --- PROCESADOR DE BUFFER (V3.0 - FORMATO LETRA-NUMERO) ---
   void _procesarBuffer() {
     if (!mounted) return;
     bool huboCambios = false;
 
-    // Regex que busca: [Número][Letra]
-    final RegExp regExp = RegExp(r'([0-9]+[\.,]?[0-9]*)\s*([a-xA-X])');
+    // Regex Nueva: Busca [Letras][EspaciosOpcionales][Numero]
+    // Ejemplo: "aa 19.21" o "b18.84"
+    final RegExp regExp = RegExp(r'([a-zA-Z]+)\s*([0-9]+\.?[0-9]*)');
 
-    while (true) {
-      final match = regExp.firstMatch(_buffer);
-      if (match == null) break;
+    Iterable<RegExpMatch> matches = regExp.allMatches(_buffer);
 
-      String valStr = match.group(1)!.replaceAll(',', '.');
-      String letra = match.group(2)!.toLowerCase();
+    if (matches.isEmpty) return;
+
+    RegExpMatch? ultimoMatchUtil;
+
+    for (final match in matches) {
+      ultimoMatchUtil = match;
+
+      String letraRaw = match.group(1)!.toLowerCase();
+      String valStr = match.group(2)!.replaceAll(',', '.');
+
+      // TRUCO: Si llega "aa", lo convertimos a "a"
+      String letra = (letraRaw == "aa") ? "a" : letraRaw;
+
       double valor = double.tryParse(valStr) ?? -1.0;
       int? index = _mapaLetras[letra];
 
-      if (valor != -1.0) {
-        // Caso especial Hervidor: 'b' actualiza index 0 y 1
-        if (letra == 'b') {
-          if (_validarYGuardar(0, valor)) huboCambios = true;
-        }
-        if (index != null && _validarYGuardar(index, valor)) {
+      if (valor != -1.0 && index != null) {
+        if (_validarYGuardar(index, valor)) {
           huboCambios = true;
         }
       }
+    }
 
-      // ELIMINACIÓN QUIRÚRGICA: Consumimos el buffer hasta el final de la trama encontrada
-      _buffer = _buffer.substring(match.end);
+    // Limpieza segura del buffer
+    if (ultimoMatchUtil != null) {
+      _buffer = _buffer.substring(ultimoMatchUtil.end);
     }
 
     if (huboCambios) {
@@ -165,26 +180,33 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
       if (_conectando) setState(() => _conectando = false);
       if (_mostrarTerminal) {
         setState(() {
-          _debugVisual = _buffer.length > 40 ? _buffer.substring(0, 40) : _buffer;
+          _debugVisual = _buffer.length > 50 ? "..." + _buffer.substring(_buffer.length - 50) : _buffer;
         });
       }
     }
   }
 
   bool _validarYGuardar(int index, double nuevoValor) {
-    // Corrección PSI si es necesario
-    if (index >= 10 && index <= 16 && nuevoValor > 50000) {
+    // 1. Conversión Presión Atm (Pa -> kPa)
+    // Si llega 81668, lo convertimos a 81.66
+    if (index == 9 && nuevoValor > 1000) {
+      nuevoValor = nuevoValor / 1000.0;
+    }
+
+    // 2. Conversión Presiones Sistema (Pa -> PSI)
+    // Si llega > 500, asumimos Pa y convertimos a PSI
+    if (index >= 10 && index <= 16 && nuevoValor > 500) {
       nuevoValor = nuevoValor / 6894.76;
     }
 
     double valorAnterior = double.tryParse(_datosPersistentes[index]) ?? 0.0;
 
-    // Aplicar Filtros de Configuración
+    // 3. Filtros Anti-Glitch
     if (_configSensores.containsKey(index)) {
       var config = _configSensores[index]!;
-      // 1. Rango físico
+      // Rango Absoluto
       if (nuevoValor < config['min']! || nuevoValor > config['max']!) return false;
-      // 2. Salto máximo (Anti-Glitch)
+      // Salto Brusco
       if (valorAnterior != 0) {
         double diferencia = (nuevoValor - valorAnterior).abs();
         if (diferencia > config['salto']!) return false;
@@ -210,7 +232,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
     _errorFugaPrevio = errorFugaActual; _errorValvulaPrevio = errorValvulaActual;
   }
 
-  // --- RESTO DE FUNCIONES DE SOPORTE ---
+  // --- FUNCIONES DE SOPORTE ---
   Future<void> _initBackgroundService() async {
     const androidConfig = FlutterBackgroundAndroidConfig(
       notificationTitle: "Monitor de variables en proceso",
@@ -237,8 +259,16 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
     setState(() => _modoPruebaErrores = activar); _timerPrueba?.cancel();
     if (activar) {
       _fasePrueba = 0;
+      // Demo ajustada al nuevo formato (Letra+Numero)
       _timerPrueba = Timer.periodic(const Duration(seconds: 2), (t) {
-        String inyeccion = ""; switch(_fasePrueba) { case 0: inyeccion = "1.00r"; break; case 1: inyeccion = "1.00s"; break; case 2: inyeccion = "1.00t"; break; case 3: inyeccion = "1.00u"; break; case 4: inyeccion = "0.00r0.00s0.00t0.00u"; break; }
+        String inyeccion = "";
+        switch(_fasePrueba) {
+          case 0: inyeccion = "r1.00"; break;
+          case 1: inyeccion = "s1.00"; break;
+          case 2: inyeccion = "t1.00"; break;
+          case 3: inyeccion = "u1.00"; break;
+          case 4: inyeccion = "r0.00 s0.00 t0.00 u0.00"; break;
+        }
         _buffer += inyeccion; _procesarBuffer(); _fasePrueba++; if (_fasePrueba > 4) _fasePrueba = 0;
       });
     }
@@ -331,8 +361,9 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
 
   void _demo() {
     setState(() { _dispositivoSeleccionado = const BluetoothDevice(address: '00', name: 'SIMULADOR'); _limpiar(); if(_autoGrabar) _grabando = true; });
+    // Demo con Formato NUEVO:
     _timerDemo = Timer.periodic(const Duration(milliseconds: 500), (t) {
-      _buffer += "20.5b21.0c22.0d23.0e24.0f25.0g26.0h45.0i25.0j101300k110.0v1.5w150.0x";
+      _buffer += "09:52:44 aa19.21 b18.84 c18.94 d19.78 e19.04 f19.21 g18.84 h45.00 i18.18 j81668.00 k12.10 l0.20 m0.30 n0.40 o0.50 p0.60 q0.70 r0.00 s0.00 t0.00 u0.00 v0.01 w0.56 x165.00\n";
       _procesarBuffer();
     });
   }

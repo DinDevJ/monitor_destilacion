@@ -1,13 +1,16 @@
 plugins {
     id("com.android.application")
     id("kotlin-android")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
 android {
     namespace = "com.example.monitor_destilacion"
-    compileSdk = flutter.compileSdkVersion
+
+    // --- CAMBIO OBLIGATORIO: Versión 36 ---
+    compileSdk = 36
+    // --------------------------------------
+
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -21,20 +24,20 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.example.monitor_destilacion"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
+
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+
+        // El targetSdk puede quedarse en 34 o 35, pero si te da guerra, súbelo a 36 también.
+        // Por ahora déjalo en 34 para mantener compatibilidad, el error solo pedía compileSdk.
+        targetSdk = 34
+
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
         }
     }
@@ -44,6 +47,5 @@ flutter {
     source = "../.."
 }
 dependencies {
-
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }
